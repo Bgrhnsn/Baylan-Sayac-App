@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "255838222961",
+    "project_id": "sayac-app-fatura",
+    "storage_bucket": "sayac-app-fatura.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255838222961:android:e9fe243254a69b8612f9d0",
+        "android_client_info": {
+          "package_name": "com.example.sayac_fatura"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9wpHZFlaUCqAYzHAzsqLs9MnNMn8CklI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255838222961:android:525c5520e7fae72112f9d0",
+        "android_client_info": {
+          "package_name": "com.example.sayacfaturapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9wpHZFlaUCqAYzHAzsqLs9MnNMn8CklI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
