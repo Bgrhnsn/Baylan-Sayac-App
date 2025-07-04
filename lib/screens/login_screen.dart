@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'home_screen.dart';
 
 /// Tam özellikli Giriş (Login) ekranı
 /// - Form + alan doğrulayıcıları
@@ -57,7 +58,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Giriş başarılı!')),
+
         );
+        Navigator.pushReplacementNamed(context, '/home');
       }
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _firebaseErrorToTR(e.code));
