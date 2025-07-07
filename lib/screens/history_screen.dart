@@ -22,11 +22,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String? _selectedUnit; // null: Tümü, 'kWh': Elektrik, 'm³': Su
   DateTimeRange? _selectedDateRange;
 
-  // DÜZELTME: Arama dinleyicisi initState'ten kaldırıldı.
-  // Bunun yerine TextField'ın onChanged özelliği kullanılacak.
   @override
   void initState() {
     super.initState();
+    // Arama kutusundaki değişiklikleri dinle
+    _searchController.addListener(() {
+      if (mounted) {
+        setState(() {
+          _searchQuery = _searchController.text;
+        });
+      }
+    });
   }
 
   @override
@@ -88,9 +94,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
               // Filtreleri uygula
               final filteredReadings = allReadings.where((reading) {
+                // GÜNCELLEME: Arama mantığı artık sayaç adını da içeriyor.
                 final searchMatch = _searchQuery.isEmpty ||
+                    (reading.meterName?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
                     reading.installationId.toLowerCase().contains(_searchQuery.toLowerCase());
+
                 final unitMatch = _selectedUnit == null || reading.unit == _selectedUnit;
+
                 final dateMatch = _selectedDateRange == null ||
                     (reading.readingTime.isAfter(_selectedDateRange!.start) &&
                         reading.readingTime.isBefore(_selectedDateRange!.end.add(const Duration(days: 1))));
@@ -130,14 +140,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // Arama Çubuğu
           TextField(
             controller: _searchController,
-            // DÜZELTME: Arama kutusundaki her değişiklikte state'i güncelleyen onChanged eklendi.
             onChanged: (value) {
               setState(() {
                 _searchQuery = value;
               });
             },
             decoration: InputDecoration(
-              labelText: 'Tesisat No ile Ara',
+              // GÜNCELLEME: Arama kutusu etiketi güncellendi.
+              labelText: 'Sayaç Adı veya Tesisat No ile Ara',
               prefixIcon: const Icon(Icons.search),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -147,7 +157,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 icon: const Icon(Icons.clear),
                 onPressed: () {
                   _searchController.clear();
-                  // Temizle butonuna basınca da state'i güncelle
                   setState(() {
                     _searchQuery = '';
                   });
@@ -190,13 +199,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ],
                 ),
               ),
-              // Tarih Filtresi Butonu
               IconButton(
                 icon: Icon(Icons.calendar_month, color: _selectedDateRange != null ? Theme.of(context).primaryColor : Colors.grey),
                 tooltip: 'Tarihe Göre Filtrele',
                 onPressed: _selectDateRange,
               ),
-              // Filtreleri Temizle Butonu
               if (_selectedDateRange != null)
                 IconButton(
                   icon: const Icon(Icons.filter_alt_off, color: Colors.grey),
@@ -234,13 +241,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
           backgroundColor: iconColor.withOpacity(0.15),
           child: Icon(iconData, color: iconColor),
         ),
+        // GÜNCELLEME: Başlık olarak sayaç adı gösteriliyor.
         title: Text(
-          reading.installationId,
+          reading.meterName ?? reading.installationId, // Sayaç adı varsa onu, yoksa tesisat nosunu göster
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        // GÜNCELLEME: Alt başlık düzenlendi.
         subtitle: Text(
-          '${reading.readingValue} ${reading.unit ?? ''}\n'
-              '${DateFormat('dd MMM, HH:mm', 'tr_TR').format(reading.readingTime)}',
+          // Eğer özel bir sayaç adı varsa, tesisat numarasını alt başlıkta göster.
+          (reading.meterName != null ? '${reading.installationId}\n' : '') +
+              '${reading.readingValue} ${reading.unit ?? ''} | ${DateFormat('dd MMM, HH:mm', 'tr_TR').format(reading.readingTime)}',
         ),
         trailing: reading.invoiceAmount != null
             ? Text(
@@ -248,7 +258,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
         )
             : null,
-        isThreeLine: true,
+        // GÜNCELLEME: Sayaç adı varsa 3 satır, yoksa 2 satır göster.
+        isThreeLine: reading.meterName != null,
         onTap: () {
           Navigator.of(context).push(MaterialPageRoute(
             builder: (context) => ReadingDetailScreen(reading: reading),

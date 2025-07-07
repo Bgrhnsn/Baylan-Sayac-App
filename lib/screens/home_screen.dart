@@ -8,9 +8,10 @@ import 'dart:math';
 
 // Gerekli ekranları import ediyoruz.
 import 'package:sayacfaturapp/screens/history_screen.dart';
-// DÜZELTME: Import yolu, doğru dosya adını ('reading_detail_screen.dart')
-// gösterecek şekilde güncellendi.
-import 'package:sayacfaturapp/screens/reading_detail_screen.dart' hide MeterReading;
+import 'package:sayacfaturapp/screens/reading_detail_screen.dart';
+import 'package:sayacfaturapp/screens/charts_screen.dart';
+// YENİ: Oluşturduğumuz profil ekranını import ediyoruz.
+import 'package:sayacfaturapp/screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,8 +39,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildDashboardTab(),
               const HistoryScreen(),
-              const Center(child: Text('Grafik Ekranı')),
-              const Center(child: Text('Profil Ekranı')),
+              const ChartsScreen(),
+              // GÜNCELLEME: Profil sekmesi artık yer tutucu değil, gerçek ekranı gösteriyor.
+              const ProfileScreen(),
             ],
           ),
           bottomNavigationBar: Container(
@@ -144,11 +146,16 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: CircleAvatar(backgroundColor: iconColor.withOpacity(0.15), child: Icon(iconData, color: iconColor)),
-        title: Text(reading.installationId, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('${reading.readingValue} ${reading.unit ?? ''}\n${DateFormat('dd MMM, HH:mm', 'tr_TR').format(reading.readingTime)}'),
+        title: Text(
+          reading.meterName ?? reading.installationId,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          (reading.meterName != null ? '${reading.installationId}\n' : '') +
+              '${reading.readingValue} ${reading.unit ?? ''} | ${DateFormat('dd MMM, HH:mm', 'tr_TR').format(reading.readingTime)}',
+        ),
         trailing: reading.invoiceAmount != null ? Text(NumberFormat.currency(locale: 'tr_TR', symbol: '₺').format(reading.invoiceAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)) : null,
-        isThreeLine: true,
-        // Tıklandığında doğru detay sayfasına yönlendir.
+        isThreeLine: reading.meterName != null,
         onTap: () {
           Navigator.of(context).push(MaterialPageRoute(
             builder: (context) => ReadingDetailScreen(reading: reading),
@@ -158,9 +165,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-// Diğer widget'lar (_MonthlyTotal, _WelcomeChartCard, _NavItem, _AddButton) aynı kalıyor.
-// Bu kısımları değiştirmeden bırakabilirsiniz.
 
 class _MonthlyTotal {
   final DateTime month;

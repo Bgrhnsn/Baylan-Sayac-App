@@ -6,8 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart'; // Harita linkini açmak için
 
 // Düzenleme ekranını import ediyoruz.
-// Bu dosyanın adının projenizde 'new_reading_screen.dart' olduğunu varsayıyorum.
-// Eğer farklıysa, bu yolu düzenlemeniz gerekebilir.
 import 'package:sayacfaturapp/screens/new_reading_screen.dart';
 
 /// Bir sayaç okumasının tüm detaylarını gösteren, düzenleme ve silme
@@ -92,20 +90,18 @@ class ReadingDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(reading.installationId),
+        // GÜNCELLEME: Başlık olarak sayaç adı gösteriliyor.
+        title: Text(reading.meterName ?? reading.installationId),
         actions: [
-          // GÜNCELLEME: Düzenle butonu
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Düzenle',
             onPressed: () {
-              // Not: NewReadingScreen'in düzenleme modunu desteklemesi gerekir.
               Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => NewReadingScreen(readingToEdit: reading),
               ));
             },
           ),
-          // GÜNCELLEME: Sil butonu
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Sil',
@@ -120,6 +116,13 @@ class ReadingDetailScreen extends StatelessWidget {
             context,
             title: 'Tesisat Bilgileri',
             children: [
+              // GÜNCELLEME: Sayaç adı varsa gösteriliyor.
+              if (reading.meterName != null && reading.meterName!.isNotEmpty)
+                _DetailRow(
+                  icon: Icons.label_important_outline,
+                  label: 'Sayaç Adı',
+                  value: reading.meterName!,
+                ),
               _DetailRow(
                 icon: Icons.confirmation_number_outlined,
                 label: 'Tesisat Numarası',
@@ -133,7 +136,7 @@ class ReadingDetailScreen extends StatelessWidget {
               _DetailRow(
                 icon: Icons.today,
                 label: 'Okuma Zamanı',
-                value: DateFormat('dd MMMM yyyy, HH:mm', 'tr_TR').format(reading.readingTime),
+                value: DateFormat('dd MMMM HH:mm', 'tr_TR').format(reading.readingTime),
               ),
             ],
           ),
@@ -152,11 +155,10 @@ class ReadingDetailScreen extends StatelessWidget {
                   _DetailRow(
                     icon: Icons.event_busy,
                     label: 'Son Ödeme Tarihi',
-                    value: DateFormat('dd MMMM yyyy', 'tr_TR').format(reading.dueDate!),
+                    value: DateFormat('dd MMMM HH:mm', 'tr_TR').format(reading.dueDate!),
                   ),
               ],
             ),
-          // GÜNCELLEME: Konum kartı ve harita
           if (reading.locationText != null || reading.gpsLat != null)
             _buildDetailCard(
               context,
@@ -178,9 +180,6 @@ class ReadingDetailScreen extends StatelessWidget {
                         alignment: Alignment.center,
                         children: [
                           Image.network(
-                            // Google Static Maps API kullanarak bir harita resmi oluşturuyoruz.
-                            // Not: Bu API'nin kullanımı için bir API anahtarı gerekebilir.
-                            // Anahtarsız kullanım limitlidir.
                             'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=YOUR_API_KEY',
                             height: 150,
                             width: double.infinity,

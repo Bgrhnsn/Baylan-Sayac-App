@@ -6,10 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sayacfaturapp/models/meter_reading.dart';
 
-/// GÜNCELLEME: Bu ekran artık hem yeni sayaç okuması eklemek hem de
-/// mevcut olanı düzenlemek için kullanılıyor.
 class NewReadingScreen extends StatefulWidget {
-  // HATA ÇÖZÜMÜ: Düzenlenecek kaydı alabilmesi için bu constructor parametresi eklendi.
   final MeterReading? readingToEdit;
 
   const NewReadingScreen({super.key, this.readingToEdit});
@@ -21,6 +18,7 @@ class NewReadingScreen extends StatefulWidget {
 class _NewReadingScreenState extends State<NewReadingScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  final _meterNameCtrl = TextEditingController();
   final _installationIdCtrl = TextEditingController();
   final _valueCtrl = TextEditingController();
   final _locationTextCtrl = TextEditingController();
@@ -33,15 +31,14 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   bool _isGettingLocation = false;
   bool _isSaving = false;
 
-  // Bu ekranın düzenleme modunda olup olmadığını belirten bir getter.
   bool get isEditMode => widget.readingToEdit != null;
 
   @override
   void initState() {
     super.initState();
-    // Eğer düzenleme modundaysak, form alanlarını mevcut verilerle doldur.
     if (isEditMode) {
       final reading = widget.readingToEdit!;
+      _meterNameCtrl.text = reading.meterName ?? '';
       _installationIdCtrl.text = reading.installationId;
       _valueCtrl.text = reading.readingValue.toString();
       _locationTextCtrl.text = reading.locationText ?? '';
@@ -57,6 +54,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
   @override
   void dispose() {
+    _meterNameCtrl.dispose();
     _installationIdCtrl.dispose();
     _valueCtrl.dispose();
     _locationTextCtrl.dispose();
@@ -65,7 +63,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   }
 
   Future<void> _handleLocationPermission() async {
-    // Bu fonksiyon doğru çalıştığı için bir değişiklik yapılmadı.
     setState(() {
       _isGettingLocation = true;
     });
@@ -152,7 +149,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     }
   }
 
-  /// KAYDETME/GÜNCELLEME FONKSİYONU
   Future<void> _saveOrUpdate() async {
     if (!_formKey.currentState!.validate() || _isSaving) return;
     setState(() => _isSaving = true);
@@ -164,10 +160,8 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       final readingValue = double.tryParse(_valueCtrl.text.trim().replaceAll(',', '.')) ?? 0.0;
       final invoiceAmount = double.tryParse(_invoiceAmountCtrl.text.trim().replaceAll(',', '.'));
 
-      // HATA ÇÖZÜMÜ: MeterReading nesnesi oluşturmak yerine,
-      // doğrudan Firestore'a gönderilecek bir Map oluşturuyoruz.
-      // Bu, yeni kayıt eklerken 'id' hatasını önler.
       final data = {
+        'meterName': _meterNameCtrl.text.trim().isEmpty ? null : _meterNameCtrl.text.trim(),
         'installationId': _installationIdCtrl.text.trim(),
         'readingValue': readingValue,
         'readingTime': _pickedTime,
@@ -215,6 +209,19 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              TextFormField(
+                controller: _meterNameCtrl,
+                // DÜZELTME: Klavyenin tüm karakterleri (Türkçe dahil) desteklemesi
+                // için klavye tipi açıkça belirtildi.
+                keyboardType: TextInputType.text,
+                decoration: const InputDecoration(
+                  labelText: 'Sayaç Adı (örn: Ev Elektrik)',
+                  prefixIcon: Icon(Icons.label_important_outline),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+
               TextFormField(controller: _installationIdCtrl, decoration: const InputDecoration(labelText: 'Tesisat Numarası', prefixIcon: Icon(Icons.confirmation_number_outlined), border: OutlineInputBorder()), validator: (v) => v!.trim().isEmpty ? 'Tesisat numarası zorunludur' : null),
               const SizedBox(height: 16),
               TextFormField(controller: _valueCtrl, decoration: const InputDecoration(labelText: 'Okuma Değeri', prefixIcon: Icon(Icons.speed_outlined), border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { if (v == null || v.trim().isEmpty) return 'Okuma değeri girin'; if (double.tryParse(v.trim().replaceAll(',', '.')) == null) return 'Lütfen geçerli bir sayı girin'; return null; }),
@@ -231,7 +238,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
               const SizedBox(height: 16),
               TextFormField(controller: _invoiceAmountCtrl, decoration: const InputDecoration(labelText: 'Fatura Tutarı', prefixIcon: Icon(Icons.receipt_long_outlined), border: OutlineInputBorder(), suffixText: 'TL'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
               const SizedBox(height: 16),
-              ListTile(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)), leading: const Icon(Icons.event_busy), title: Text(_pickedDueDate == null ? 'Son Ödeme Tarihi Seçin' : DateFormat('dd MMMM yyyy', 'tr_TR').format(_pickedDueDate!)), trailing: _pickedDueDate == null ? const Icon(Icons.calendar_month) : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _pickedDueDate = null)), onTap: () async { final d = await showDatePicker(context: context, initialDate: _pickedDueDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR')); if (d == null) return; setState(() => _pickedDueDate = d); }),
+              ListTile(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)), leading: const Icon(Icons.event_busy), title: Text(_pickedDueDate == null ? 'Son Ödeme Tarihi Seçin' : DateFormat('dd MMMM HH:mm', 'tr_TR').format(_pickedDueDate!)), trailing: _pickedDueDate == null ? const Icon(Icons.calendar_month) : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _pickedDueDate = null)), onTap: () async { final d = await showDatePicker(context: context, initialDate: _pickedDueDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR')); if (d == null) return; setState(() => _pickedDueDate = d); }),
               const SizedBox(height: 24),
               ElevatedButton.icon(style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), backgroundColor: _isSaving ? Colors.grey : Theme.of(context).primaryColor, foregroundColor: Colors.white), onPressed: _isSaving ? null : _saveOrUpdate, icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(isEditMode ? Icons.check : Icons.save), label: Text(isEditMode ? 'Güncelle' : 'Kaydet')),
             ],

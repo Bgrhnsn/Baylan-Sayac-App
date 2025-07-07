@@ -2,11 +2,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MeterReading {
-  // GÜNCELLEME: Doküman ID'sini saklamak için alan eklendi.
   final String id;
+  // YENİ: Kullanıcının sayaca verdiği özel isim
+  final String? meterName;
+  final String installationId;
+  final double readingValue;
+  final DateTime readingTime;
+  final String? unit;
+  final String? locationText;
+  final double? gpsLat;
+  final double? gpsLng;
+  final double? invoiceAmount;
+  final DateTime? dueDate;
+  final double? dueAmount;
 
   MeterReading({
-    required this.id, // GÜNCELLEME: Constructor'a eklendi.
+    required this.id,
+    this.meterName, // GÜNCELLEME: Constructor'a eklendi.
     required this.installationId,
     required this.readingValue,
     required this.readingTime,
@@ -19,37 +31,10 @@ class MeterReading {
     this.dueAmount,
   });
 
-  /// Benzersiz sayaç/tesisat numarası
-  final String installationId;
-
-  /// Okuma değeri (m³ veya kWh)
-  final double readingValue;
-
-  /// Okuma zamanı (otomatik + değiştirilebilir)
-  final DateTime readingTime;
-
-  /// Ölçüm birimi (isteğe bağlı, arayüzden alınır)
-  final String? unit; // örnek: "kWh", "m³"
-
-  /// Kullanıcı girişi lokasyon açıklaması (isteğe bağlı)
-  final String? locationText;
-
-  /// GPS koordinatları (isteğe bağlı)
-  final double? gpsLat;
-  final double? gpsLng;
-
-  /// Fatura tutarı (TL)
-  final double? invoiceAmount;
-
-  /// Son ödeme tarihi (isteğe bağlı)
-  final DateTime? dueDate;
-
-  /// Son ödeme tutarı (güncel borç gibi)
-  final double? dueAmount;
-
   /// Bu metod, nesneyi Firestore'a yazmak için bir Map'e dönüştürür.
   Map<String, dynamic> toJson() {
     return {
+      'meterName': meterName, // GÜNCELLEME: Firestore'a gönderilecek veriye eklendi.
       'installationId': installationId,
       'readingValue': readingValue,
       'readingTime': readingTime,
@@ -63,23 +48,22 @@ class MeterReading {
     };
   }
 
-  /// GÜNCELLEME: Bu factory constructor artık doküman ID'sini de alıyor.
-  /// Firestore'dan gelen bir dokümanı MeterReading nesnesine dönüştürür.
+  /// Bu factory constructor, Firestore'dan gelen bir dokümanı
+  /// MeterReading nesnesine dönüştürür.
   factory MeterReading.fromSnapshot(DocumentSnapshot snap) {
     var data = snap.data() as Map<String, dynamic>;
 
     return MeterReading(
-      id: snap.id, // Doküman ID'si alınıyor.
+      id: snap.id,
+      meterName: data['meterName'], // GÜNCELLEME: Firestore'dan veri okunurken eklendi.
       installationId: data['installationId'],
       readingValue: data['readingValue'],
-      // Firestore'dan gelen Timestamp'i DateTime'a çeviriyoruz.
       readingTime: (data['readingTime'] as Timestamp).toDate(),
       unit: data['unit'],
       locationText: data['locationText'],
       gpsLat: data['gpsLat'],
       gpsLng: data['gpsLng'],
       invoiceAmount: data['invoiceAmount'],
-      // dueDate null olabilir, bu yüzden kontrol ediyoruz.
       dueDate: data['dueDate'] != null ? (data['dueDate'] as Timestamp).toDate() : null,
       dueAmount: data['dueAmount'],
     );
