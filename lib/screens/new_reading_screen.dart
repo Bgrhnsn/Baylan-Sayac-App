@@ -1,23 +1,54 @@
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// lib/new_reading_screen.dart
+// ===========================================================
+// FINAL CONSOLIDATED VERSION  v5.7  (2025‑07‑22)
+// -----------------------------------------------------------
+//  🔄  Ana iyileştirmeler
+//  • readingValue: Artık okunduğu gibi (örn: 190,154) gösteriliyor.
+//  • _saveOrUpdate: Kaydetme fonksiyonu, formatlı değeri doğru şekilde
+//    (örn: 190154) sayıya çevirecek şekilde güncellendi.
+// ===========================================================
+
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:intl/intl.dart';
 import 'package:sayacfaturapp/models/meter_reading.dart';
 
+// ———————————————————————————————————————————  Helpers
+class _Candidate {
+  _Candidate({required this.value, required this.boundingBox, this.score = 0});
+  final String value;
+  final Rect boundingBox;
+  double score;
+}
+class _LineInfo {
+  _LineInfo(this.text, this.normalizedText, this.boundingBox);
+  final String text;
+  final String normalizedText;
+  final Rect boundingBox;
+}
+
+double _toDouble(String s) =>
+    double.tryParse(s.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
+
+// ———————————————————————————————————————————  Widget
 class NewReadingScreen extends StatefulWidget {
-  final MeterReading? readingToEdit;
-
   const NewReadingScreen({super.key, this.readingToEdit});
-
+  final MeterReading? readingToEdit;
   @override
   State<NewReadingScreen> createState() => _NewReadingScreenState();
 }
 
 class _NewReadingScreenState extends State<NewReadingScreen> {
+  // controllers
   final _formKey = GlobalKey<FormState>();
-
   final _meterNameCtrl = TextEditingController();
   final _installationIdCtrl = TextEditingController();
   final _valueCtrl = TextEditingController();
@@ -30,24 +61,36 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   Position? _gpsPos;
   bool _isGettingLocation = false;
   bool _isSaving = false;
+  bool _isScanning = false;
+  bool get _isEdit => widget.readingToEdit != null;
 
-  bool get isEditMode => widget.readingToEdit != null;
-
+  // ---------------------------------------------------- lifecycle
   @override
   void initState() {
     super.initState();
-    if (isEditMode) {
-      final reading = widget.readingToEdit!;
-      _meterNameCtrl.text = reading.meterName ?? '';
-      _installationIdCtrl.text = reading.installationId;
-      _valueCtrl.text = reading.readingValue.toString();
-      _locationTextCtrl.text = reading.locationText ?? '';
-      _invoiceAmountCtrl.text = reading.invoiceAmount?.toString() ?? '';
-      _pickedTime = reading.readingTime;
-      _pickedDueDate = reading.dueDate;
-      _selectedUnit = {reading.unit ?? 'kWh'};
-      if (reading.gpsLat != null && reading.gpsLng != null) {
-        _gpsPos = Position(latitude: reading.gpsLat!, longitude: reading.gpsLng!, timestamp: DateTime.now(), accuracy: 0, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0);
+    if (_isEdit) {
+      final r = widget.readingToEdit!;
+      _meterNameCtrl.text = r.meterName ?? '';
+      _installationIdCtrl.text = r.installationId;
+      _valueCtrl.text = r.readingValue.toString();
+      _locationTextCtrl.text = r.locationText ?? '';
+      _invoiceAmountCtrl.text = r.invoiceAmount?.toString() ?? '';
+      _pickedTime = r.readingTime;
+      _pickedDueDate = r.dueDate;
+      _selectedUnit = {r.unit ?? 'kWh'};
+      if (r.gpsLat != null && r.gpsLng != null) {
+        _gpsPos = Position(
+          latitude: r.gpsLat!,
+          longitude: r.gpsLng!,
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+        );
       }
     }
   }
@@ -62,146 +105,480 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     super.dispose();
   }
 
-  Future<void> _handleLocationPermission() async {
-    setState(() {
-      _isGettingLocation = true;
-    });
+  // ————————————————————————————————  OCR FLOW
+  Future<void> _scanWithOcr() async {
+    final scanner = DocumentScanner(
+      options: DocumentScannerOptions(
+        documentFormat: DocumentFormat.jpeg,
+        mode: ScannerMode.filter,
+        pageLimit: 1,
+        isGalleryImport: true,
+      ),
+    );
 
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Konum servisleri kapalı. Lütfen açın.')));
-      }
-      setState(() => _isGettingLocation = false);
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Konum izni verilmedi.')));
-        }
-        setState(() => _isGettingLocation = false);
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Konum izni kalıcı olarak reddedildi. Ayarlardan izin vermeniz gerekiyor.')));
-      }
-      setState(() => _isGettingLocation = false);
-      return;
-    }
-
+    setState(() => _isScanning = true);
     try {
-      final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium
-      );
+      final result = await scanner.scanDocument();
+      await scanner.close();
+      if (result.images.isEmpty) return;
 
-      try {
-        List<Placemark> placemarks = await placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
+      final imgFile = File(result.images.first);
+      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final recText = await recognizer.processImage(InputImage.fromFile(imgFile));
+      await recognizer.close();
 
-        String address = 'Adres bulunamadı.';
-        if (placemarks.isNotEmpty) {
-          final Placemark place = placemarks.first;
-          address = [
-            place.street,
-            place.subLocality,
-            place.locality,
-            place.postalCode,
-            place.country
-          ].where((element) => element != null && element.isNotEmpty).join(', ');
-        }
+      final data = _parse(recText);
+      _populateFields(data);
 
-        setState(() {
-          _gpsPos = position;
-          _locationTextCtrl.text = address;
-        });
-
-      } catch (e) {
-        setState(() {
-          _gpsPos = position;
-          _locationTextCtrl.text = 'Lat: ${position.latitude.toStringAsFixed(5)}, Lng: ${position.longitude.toStringAsFixed(5)}';
-        });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(data.isEmpty
+              ? 'Faturadan otomatik bilgi alınamadı.'
+              : '${data.length} alan dolduruldu: ${data.keys.join(', ')}'),
+          backgroundColor: data.isEmpty ? Colors.orange : Colors.green,
+        ));
       }
-
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Konum alınamadı: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('OCR hatası: $e')));
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isGettingLocation = false;
-        });
+      if (mounted) setState(() => _isScanning = false);
+    }
+  }
+
+  // ————————————————————————————————  Normalization
+  String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll('ç', 'c')
+      .replaceAll('ğ', 'g')
+      .replaceAll('ı', 'i')
+      .replaceAll('ö', 'o')
+      .replaceAll('ş', 's')
+      .replaceAll('ü', 'u')
+      .replaceAll(RegExp(r'[^a-z0-9%./:\-\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  // ————————————————————————————————  ADVANCED PARSER v5.6 (NİHAİ STRATEJİ)
+  Map<String, String> _parse(RecognizedText rec) {
+    final lines = rec.blocks
+        .expand((b) => b.lines.map((l) => _LineInfo(l.text, _norm(l.text), l.boundingBox)))
+        .toList();
+
+    // --- TANIMLAMA KURALLARI (YENİ STRATEJİ) ---
+    final specs = {
+
+      'installationId': {
+
+        'strategies': ['findRight','findBelow'],
+
+        // YENİ: Farklı faturalardaki alternatif ifadeler eklendi.
+
+        'kw': ['tesisat no', 'sayac no',  'tekil kod','sayaç no','sayaç','sayac'],
+
+        're': [RegExp(r'(\b\d{7,14}\b)')], // YENİ: Numara uzunluğu aralığı genişletildi.
+
+        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no', 'musteri no'],
+
+      },
+
+      'invoiceAmount': {
+
+        'strategies': ['findLeft', 'findBelow', 'findRight'],
+
+        // YENİ: Daha genel ifadeler eklendi.
+
+        'kw': ['odenecek toplam tutar', 'toplam fatura tutari', 'son odeme tutari', 'toplam', 'odenecek'],
+
+        're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')], // Bu kural iyi, ondalıklı ve 2 haneli para formatını yakalar.
+
+        'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'tl', 'kr', 'krs', 'fatura tutari (', 'ara toplam','donem tutar','dönem tutarı'],
+
+        // Satırında mutlaka ondalık kontrolü (çok önemli)
+
+        'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
+
+      },
+
+      'dueDate': {
+
+        'strategies': ['findRight', 'findBelow'],
+
+        // YENİ: Kısaltmalar eklendi.
+
+        'kw': ['son odeme tarihi', 's o t', 'son odeme'],
+
+        're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')], // YENİ: Ayraç olarak '-' eklendi.
+
+        'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],
+
+      },
+
+      'readingValue': {
+        'strategies': ['findRight'],
+        'kw': ['tuketim','tüketim','enerji','enerji tuketim bedeli','bedel'],
+        're': [RegExp(r'(\b\d{1,3}(?:[.,]?\d{3})*\b)')],
+        'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'kadem', 'gece', 'gunduz', 'puant',
+          'ortalama','ortalama tuketim','orta','kwh/gun','kwh/gün','fatura ortalama tuketimi',
+          'fatura ortalama tüketimi','yuksek','yüksek','yuksek kademe','yüksek kademe'],
+      },
+
+    };
+
+    final out = <String, String>{};
+
+    for (final entry in specs.entries) {
+      final key = entry.key;
+      final spec = entry.value as Map<String, dynamic>;
+      final strategies = spec['strategies'] as List<String>;
+      _Candidate? best;
+
+      for (final strat in strategies) {
+        final cand = _findCandidate(lines, spec, _getScorer(strat), key);
+        if (cand != null && (best == null || cand.score < best.score)) best = cand;
       }
+      if (best != null) out[key] = best.value;
+    }
+    // kWh gibi birimleri temizle
+    if (out['readingValue'] != null) {
+      out['readingValue'] = out['readingValue']!
+          .replaceAll(RegExp(r'\s*(kwh|m3|m³)', caseSensitive: false), '')
+          .trim();
+    }
+    return out;
+  }
+
+  _Candidate? _findCandidate(List<_LineInfo> lines, Map<String, dynamic> spec,
+      double Function(Rect, Rect) scorer, String fieldKey) {
+    final kw = (spec['kw'] as List<String>).map(_norm).toList();
+    final negKw = (spec['negKw'] as List<String>).map(_norm).toList();
+    final res = spec['re'] as List<RegExp>;
+    final lineFilter = spec['lineFilter'] as bool Function(String)?;
+
+    final labels = <_LineInfo>[];
+    final vals = <_Candidate>[];
+
+    for (final l in lines) {
+      if (negKw.any((w) => l.normalizedText.contains(w))) continue;
+      if (kw.any((w) => l.normalizedText.contains(w))) labels.add(l);
+    }
+    if (labels.isEmpty) return null;
+
+    for (final l in lines) {
+      if (negKw.any((w) => l.normalizedText.contains(w))) continue;
+      if (lineFilter != null && !lineFilter(l.text)) continue;
+
+      if (fieldKey == 'readingValue' && (l.text.contains(',') || l.text.contains('.'))) {
+        if (RegExp(r'\b\d+[.,]\d{2}\b').hasMatch(l.text)) continue;
+      }
+
+      for (final r in res) {
+        for (final m in r.allMatches(l.text)) {
+          final value = m.group(1);
+          if (value != null && value.isNotEmpty) {
+            vals.add(_Candidate(value: value, boundingBox: l.boundingBox));
+          }
+        }
+      }
+    }
+    if (vals.isEmpty) return null;
+
+    for (final v in vals) {
+      double minD = double.infinity;
+      for (final l in labels) {
+        final d = scorer(l.boundingBox, v.boundingBox);
+        if (d < minD) minD = d;
+      }
+      v.score = minD;
+    }
+
+    vals.removeWhere((v) => v.score == double.infinity);
+    if (vals.isEmpty) return null;
+
+    if (fieldKey == 'readingValue') {
+      final closeCandidates = vals.where((c) => c.score < 350).toList();
+      if (closeCandidates.isEmpty) return null;
+      closeCandidates.sort((a, b) => _toDouble(b.value).compareTo(_toDouble(a.value)));
+      return closeCandidates.first;
+    }
+
+    vals.sort((a, b) => a.score.compareTo(b.score));
+    return vals.first;
+  }
+
+  double Function(Rect, Rect) _getScorer(String name) {
+    switch (name) {
+      case 'findRight':
+        return _scoreRightOf;
+      case 'findLeft':
+        return _scoreLeftOf;
+      case 'findBelow':
+        return _scoreBelow;
+      default:
+        return (a, b) => double.infinity;
+    }
+  }
+
+  double _scoreRightOf(Rect k, Rect v) {
+    final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
+    if (yOverlap < (k.height * 0.5)) return double.infinity;
+    final dx = v.left - k.right;
+    if (dx < 0) return double.infinity;
+    return dx;
+  }
+
+  double _scoreLeftOf(Rect k, Rect v) {
+    final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
+    if (yOverlap < (k.height * 0.5)) return double.infinity;
+    final dx = k.left - v.right;
+    if (dx < 0) return double.infinity;
+    return dx;
+  }
+
+  double _scoreBelow(Rect k, Rect v) {
+    final horizontallyAligned = (v.center.dx - k.center.dx).abs() < k.width * 0.8;
+    if (!horizontallyAligned || v.top <= k.bottom) return double.infinity;
+    return v.top - k.bottom;
+  }
+
+  // ───────────────────────────── UI HELPERS & POPULATE (DEĞİŞİKLİK) ─────────────────── //
+  void _populateFields(Map<String, String> d) {
+    setState(() {
+      if (d['installationId'] != null) _installationIdCtrl.text = d['installationId']!;
+      if (d['invoiceAmount'] != null) {
+        _invoiceAmountCtrl.text = d['invoiceAmount']!
+            .replaceAll('.', '')
+            .replaceAll(',', '.');
+      }
+      if (d['readingValue'] != null) {
+        // DEĞİŞİKLİK: Artık okunan değerdeki virgül temizlenmiyor.
+        // Değer, okunduğu gibi '190,154' şeklinde gösterilecek.
+        _valueCtrl.text = d['readingValue']!;
+      }
+      if (d['dueDate'] != null) {
+        final String ds = d['dueDate']!.replaceAll('/', '.').replaceAll('-', '.');
+        try {
+          _pickedDueDate = DateFormat('dd.MM.yyyy').parseStrict(ds);
+        } catch (_) {
+          try {
+            _pickedDueDate = DateFormat('yyyy.MM.dd').parseStrict(ds);
+          } catch (e) {
+            print('Tarih formatı anlaşılamadı: $ds');
+          }
+        }
+      }
+    });
+  }
+
+  // ───────────────────── LOCATION & SAVE/UPDATE (DEĞİŞİKLİK) ───────────────────────── //
+
+  Future<void> _handleLocationPermission() async {
+    setState(() => _isGettingLocation = true);
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Konum servisleri kapalı.')));
+      }
+      setState(() => _isGettingLocation = false);
+      return;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Konum izni verilmedi.')));
+      }
+      setState(() => _isGettingLocation = false);
+      return;
+    }
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium);
+      String address =
+          'Lat: ${pos.latitude.toStringAsFixed(5)}, Lng: ${pos.longitude.toStringAsFixed(5)}';
+      try {
+        final placemark =
+        await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        if (placemark.isNotEmpty) {
+          final p = placemark.first;
+          address =
+              [p.street, p.locality, p.country].where((e) => e != null && e.isNotEmpty).join(', ');
+        }
+      } catch (_) {}
+      setState(() {
+        _gpsPos = pos;
+        _locationTextCtrl.text = address;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Konum alınamadı: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isGettingLocation = false);
     }
   }
 
   Future<void> _saveOrUpdate() async {
     if (!_formKey.currentState!.validate() || _isSaving) return;
     setState(() => _isSaving = true);
-
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Giriş yapmalısınız.');
 
-      final readingValue = double.tryParse(_valueCtrl.text.trim().replaceAll(',', '.')) ?? 0.0;
-      final invoiceAmount = double.tryParse(_invoiceAmountCtrl.text.trim().replaceAll(',', '.'));
+      // DEĞİŞİKLİK: '190,154' gibi formatlı bir metni doğru sayıya çevirmek için
+      // hem virgül hem de nokta karakterlerini temizliyoruz.
+      final readingValue = double.tryParse(
+          _valueCtrl.text.trim().replaceAll(RegExp(r'[.,]'), '')) ?? 0.0;
 
+      final invoiceAmount =
+      double.tryParse(_invoiceAmountCtrl.text.trim().replaceAll(',', '.'));
       final data = {
-        'meterName': _meterNameCtrl.text.trim().isEmpty ? null : _meterNameCtrl.text.trim(),
+        'meterName': _meterNameCtrl.text.trim().isEmpty
+            ? null
+            : _meterNameCtrl.text.trim(),
         'installationId': _installationIdCtrl.text.trim(),
         'readingValue': readingValue,
         'readingTime': _pickedTime,
         'unit': _selectedUnit.first,
-        'locationText': _locationTextCtrl.text.trim().isEmpty ? null : _locationTextCtrl.text.trim(),
+        'locationText': _locationTextCtrl.text.trim().isEmpty
+            ? null
+            : _locationTextCtrl.text.trim(),
         'gpsLat': _gpsPos?.latitude,
         'gpsLng': _gpsPos?.longitude,
         'invoiceAmount': invoiceAmount,
         'dueDate': _pickedDueDate,
         'dueAmount': null,
       };
-
-      final userReadings = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('readings');
-      String message;
-
-      if (isEditMode) {
-        await userReadings.doc(widget.readingToEdit!.id).update(data);
-        message = 'Kayıt başarıyla güncellendi.';
+      final ref = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('readings');
+      final msg = _isEdit
+          ? 'Kayıt başarıyla güncellendi.'
+          : 'Sayaç okuması başarıyla kaydedildi.';
+      if (_isEdit) {
+        await ref.doc(widget.readingToEdit!.id).update(data);
       } else {
-        await userReadings.add(data);
-        message = 'Sayaç okuması başarıyla kaydedildi.';
+        await ref.add(data);
       }
-
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
+        Navigator.of(context).popUntil((r) => r.isFirst);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
+  // ────────────────────────────── UI ──────────────────────────────── //
+
+  void _showScanTipsDialog() {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text('Daha İyi Tarama İçin İpuçları'),
+      content: const Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('• Faturayı düz bir yüzeye koyun'),
+          Text('• İyi ışık altında fotoğraf çekin'),
+          Text('• Faturanın tamamı görünür olsun'),
+          Text('• Buruşukluklardan kaçının'),
+          Text('• Kamera sabit tutun'),
+          Text('• Gerekirse birkaç kez deneyin'),
+        ],
+      ),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Anladım'))],
+    ),
+    );
+  }
+
+  void _showManualInputDialog() {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text('Manuel Giriş'),
+      content: const Text('Bu özellik yakında eklenecektir. Lütfen şimdilik alanları elle doldurun.'),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Tamam'))],
+    ),
+    );
+  }
+
+  void _showOcrDebugDialog(String ocrText) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('OCR Sonucu (Debug)'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: Column(
+            children: [
+              Text('Tespit edilen metin uzunluğu: ${ocrText.length} karakter'),
+              const SizedBox(height: 10),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    ocrText,
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Kopyala'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Kapat'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(isEditMode ? 'Okumayı Düzenle' : 'Yeni Sayaç Okuma')),
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Okumayı Düzenle' : 'Yeni Sayaç Okuma'),
+        actions: [
+          if (_isScanning)
+            const Padding(padding: EdgeInsets.all(16.0), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white)))
+          else ...[
+            IconButton(icon: const Icon(Icons.camera_alt_outlined), tooltip: 'Faturayı Tara', onPressed: _scanWithOcr),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                switch (value) {
+                  case 'manual_scan': _showManualInputDialog(); break;
+                  case 'scan_tips': _showScanTipsDialog(); break;
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'manual_scan', child: ListTile(leading: Icon(Icons.edit), title: Text('Manuel Giriş'), contentPadding: EdgeInsets.zero)),
+                const PopupMenuItem(value: 'scan_tips', child: ListTile(leading: Icon(Icons.help_outline), title: Text('Tarama İpuçları'), contentPadding: EdgeInsets.zero)),
+              ],
+            ),
+          ],
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -209,28 +586,57 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
-                controller: _meterNameCtrl,
-                // DÜZELTME: Klavyenin tüm karakterleri (Türkçe dahil) desteklemesi
-                // için klavye tipi açıkça belirtildi.
-                keyboardType: TextInputType.text,
-                decoration: const InputDecoration(
-                  labelText: 'Sayaç Adı (örn: Ev Elektrik)',
-                  prefixIcon: Icon(Icons.label_important_outline),
-                  border: OutlineInputBorder(),
-                ),
-              ),
+              TextFormField(controller: _meterNameCtrl, decoration: const InputDecoration(labelText: 'Sayaç Adı (örn: Ev Elektrik)', prefixIcon: Icon(Icons.label_important_outline), border: OutlineInputBorder())),
               const SizedBox(height: 16),
-
               TextFormField(controller: _installationIdCtrl, decoration: const InputDecoration(labelText: 'Tesisat Numarası', prefixIcon: Icon(Icons.confirmation_number_outlined), border: OutlineInputBorder()), validator: (v) => v!.trim().isEmpty ? 'Tesisat numarası zorunludur' : null),
               const SizedBox(height: 16),
-              TextFormField(controller: _valueCtrl, decoration: const InputDecoration(labelText: 'Okuma Değeri', prefixIcon: Icon(Icons.speed_outlined), border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { if (v == null || v.trim().isEmpty) return 'Okuma değeri girin'; if (double.tryParse(v.trim().replaceAll(',', '.')) == null) return 'Lütfen geçerli bir sayı girin'; return null; }),
+              TextFormField(
+                controller: _valueCtrl,
+                decoration: const InputDecoration(labelText: 'Okuma Değeri', prefixIcon: Icon(Icons.speed_outlined), border: OutlineInputBorder()),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'Okuma değeri girin';
+                  if (double.tryParse(v.trim().replaceAll(RegExp(r'[.,]'), '')) == null) return 'Lütfen geçerli bir sayı girin';
+                  return null;
+                },
+              ),
               const SizedBox(height: 16),
-              SegmentedButton<String>(segments: const [ButtonSegment(value: 'kWh', label: Text('kWh'), icon: Icon(Icons.electric_bolt)), ButtonSegment(value: 'm³', label: Text('m³'), icon: Icon(Icons.water_drop))], selected: _selectedUnit, onSelectionChanged: (newSelection) => setState(() => _selectedUnit = newSelection)),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'kWh', label: Text('kWh'), icon: Icon(Icons.electric_bolt)),
+                  ButtonSegment(value: 'm³', label: Text('m³'), icon: Icon(Icons.water_drop)),
+                ],
+                selected: _selectedUnit,
+                onSelectionChanged: (s) => setState(() => _selectedUnit = s),
+              ),
               const SizedBox(height: 16),
-              ListTile(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)), leading: const Icon(Icons.today), title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Okuma Zamanı', style: Theme.of(context).textTheme.bodySmall), Text(DateFormat('dd MMMM HH:mm', 'tr_TR').format(_pickedTime), style: Theme.of(context).textTheme.titleMedium)]), trailing: const Icon(Icons.edit_calendar), onTap: () async { final d = await showDatePicker(context: context, initialDate: _pickedTime, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR')); if (d == null || !mounted) return; final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_pickedTime)); if (t == null) return; setState(() => _pickedTime = DateTime(d.year, d.month, d.day, t.hour, t.minute)); }),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)),
+                leading: const Icon(Icons.today),
+                title: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Okuma Zamanı', style: Theme.of(context).textTheme.bodySmall),
+                    Text(DateFormat('dd MMMM HH:mm', 'tr_TR').format(_pickedTime), style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+                trailing: const Icon(Icons.edit_calendar),
+                onTap: () async {
+                  final d = await showDatePicker(context: context, initialDate: _pickedTime, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR'));
+                  if (d == null) return;
+                  final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_pickedTime));
+                  if (t == null) return;
+                  setState(() => _pickedTime = DateTime(d.year, d.month, d.day, t.hour, t.minute));
+                },
+              ),
               const SizedBox(height: 16),
-              TextFormField(controller: _locationTextCtrl, decoration: InputDecoration(labelText: 'Adres / Lokasyon Açıklaması', border: const OutlineInputBorder(), prefixIcon: _isGettingLocation ? const Padding(padding: EdgeInsets.all(10.0), child: CircularProgressIndicator(strokeWidth: 2)) : IconButton(icon: const Icon(Icons.my_location), tooltip: 'GPS ile Doldur', onPressed: _handleLocationPermission))),
+              TextFormField(
+                controller: _locationTextCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Adres / Lokasyon',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: _isGettingLocation ? const Padding(padding: EdgeInsets.all(10.0), child: CircularProgressIndicator(strokeWidth: 2)) : IconButton(icon: const Icon(Icons.my_location), onPressed: _handleLocationPermission),
+                ),
+              ),
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 10),
@@ -238,9 +644,24 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
               const SizedBox(height: 16),
               TextFormField(controller: _invoiceAmountCtrl, decoration: const InputDecoration(labelText: 'Fatura Tutarı', prefixIcon: Icon(Icons.receipt_long_outlined), border: OutlineInputBorder(), suffixText: 'TL'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
               const SizedBox(height: 16),
-              ListTile(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)), leading: const Icon(Icons.event_busy), title: Text(_pickedDueDate == null ? 'Son Ödeme Tarihi Seçin' : DateFormat('dd MMMM HH:mm', 'tr_TR').format(_pickedDueDate!)), trailing: _pickedDueDate == null ? const Icon(Icons.calendar_month) : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _pickedDueDate = null)), onTap: () async { final d = await showDatePicker(context: context, initialDate: _pickedDueDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR')); if (d == null) return; setState(() => _pickedDueDate = d); }),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)),
+                leading: const Icon(Icons.event_busy),
+                title: Text(_pickedDueDate == null ? 'Son Ödeme Tarihi Seçin' : DateFormat('dd MMMM yyyy', 'tr_TR').format(_pickedDueDate!)),
+                trailing: _pickedDueDate == null ? const Icon(Icons.calendar_month) : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _pickedDueDate = null)),
+                onTap: () async {
+                  final d = await showDatePicker(context: context, initialDate: _pickedDueDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR'));
+                  if (d == null) return;
+                  setState(() => _pickedDueDate = d);
+                },
+              ),
               const SizedBox(height: 24),
-              ElevatedButton.icon(style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), backgroundColor: _isSaving ? Colors.grey : Theme.of(context).primaryColor, foregroundColor: Colors.white), onPressed: _isSaving ? null : _saveOrUpdate, icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(isEditMode ? Icons.check : Icons.save), label: Text(isEditMode ? 'Güncelle' : 'Kaydet')),
+              ElevatedButton.icon(
+                onPressed: _isSaving ? null : _saveOrUpdate,
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12), backgroundColor: _isSaving ? Colors.grey : Theme.of(context).primaryColor, foregroundColor: Colors.white),
+                icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(_isEdit ? Icons.check : Icons.save),
+                label: Text(_isEdit ? 'Güncelle' : 'Kaydet'),
+              ),
             ],
           ),
         ),

@@ -18,20 +18,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _signOut() async {
     await FirebaseAuth.instance.signOut();
     if (mounted) {
+      // Tüm geçmişi temizleyerek login ekranına yönlendir
       Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
     }
   }
 
-  // GÜNCELLEME: Şifre değiştirme dialogunu açan fonksiyon
-  void _showChangePasswordDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Dialog dışına tıklayınca kapanmasını engelle
-      builder: (context) {
-        // Dialogun kendi state'ini yönetmesi için ayrı bir widget kullanıyoruz.
-        return const _ChangePasswordDialog();
-      },
-    );
+  // Şifre sıfırlama e-postası gönderme fonksiyonu
+  Future<void> _resetPassword() async {
+    if (_currentUser?.email == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Şifre sıfırlama linki göndermek için e-posta adresi bulunamadı.')),
+      );
+      return;
+    }
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: _currentUser!.email!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_currentUser!.email} adresine şifre sıfırlama linki gönderildi.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Bir hata oluştu: $e')),
+        );
+      }
+    }
   }
 
   // Hesap silme işlemi için onay dialogu
@@ -66,20 +79,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       if (_currentUser == null) return;
 
-      final readingsQuery = await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).collection('readings').get();
+      // Firestore'daki tüm okuma verilerini sil
+      final readingsQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .collection('readings')
+          .get();
       for (var doc in readingsQuery.docs) {
         await doc.reference.delete();
       }
+
+      // Kullanıcının ana dokümanını sil (varsa)
       await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).delete();
+
+      // Firebase Auth'dan kullanıcıyı sil
       await _currentUser!.delete();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hesabınız başarıyla silindi.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hesabınız başarıyla silindi.')),
+        );
+        // Login ekranına yönlendir
         Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         String message = 'Hesap silinirken bir hata oluştu: ${e.message}';
+        // Yeniden kimlik doğrulama gerektiren hata için kullanıcıyı bilgilendir
         if (e.code == 'requires-recent-login') {
           message = 'Bu hassas bir işlemdir. Lütfen çıkış yapıp tekrar giriş yaptıktan sonra deneyin.';
         }
@@ -96,7 +122,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(_currentUser?.uid).collection('readings').snapshots(),
+        // Kullanıcının istatistiklerini almak için verileri dinle
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUser?.uid)
+            .collection('readings')
+            .snapshots(),
         builder: (context, snapshot) {
           int totalReadings = 0;
           int uniqueMeters = 0;
@@ -110,8 +141,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
+              // 1. Kullanıcı Bilgi Kartı
               _buildUserInfoCard(),
               const SizedBox(height: 24),
+
+              // 2. İstatistik Kartları
               Row(
                 children: [
                   Expanded(child: _StatCard(count: totalReadings.toString(), label: 'Toplam Kayıt', icon: Icons.receipt_long, color: Colors.blue)),
@@ -120,13 +154,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
               const SizedBox(height: 24),
+
+              // 3. Hesap Yönetimi
               _buildSectionTitle('Hesap Yönetimi'),
-              // GÜNCELLEME: onTap artık yeni dialog fonksiyonunu çağırıyor.
-              _ActionTile(title: 'Şifremi Değiştir', icon: Icons.lock_outline, onTap: _showChangePasswordDialog),
+              _ActionTile(title: 'Şifremi Değiştir', icon: Icons.lock_outline, onTap: _resetPassword),
               _ActionTile(title: 'Çıkış Yap', icon: Icons.logout, onTap: _signOut),
               const SizedBox(height: 16),
+
+              // 4. Tehlikeli Alan
               _buildSectionTitle('Tehlikeli Alan'),
-              _ActionTile(title: 'Hesabımı Sil', icon: Icons.delete_forever_outlined, color: Colors.red, onTap: _showDeleteConfirmation),
+              _ActionTile(
+                title: 'Hesabımı Sil',
+                icon: Icons.delete_forever_outlined,
+                color: Colors.red,
+                onTap: _showDeleteConfirmation,
+              ),
             ],
           );
         },
@@ -234,156 +276,6 @@ class _ActionTile extends StatelessWidget {
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
-    );
-  }
-}
-
-/// YENİ: Şifre değiştirme dialogunu ve state'ini yöneten widget.
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog();
-
-  @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
-}
-
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _currentPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _isSaving = false;
-  bool _currentPasswordVisible = false;
-  bool _newPasswordVisible = false;
-
-  @override
-  void dispose() {
-    _currentPasswordController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _updatePassword() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-    setState(() => _isSaving = true);
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.email == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kullanıcı bulunamadı.'), backgroundColor: Colors.red),
-        );
-      }
-      setState(() => _isSaving = false);
-      return;
-    }
-
-    final cred = EmailAuthProvider.credential(
-      email: user.email!,
-      password: _currentPasswordController.text,
-    );
-
-    try {
-      await user.reauthenticateWithCredential(cred);
-      await user.updatePassword(_newPasswordController.text);
-
-      if (mounted) {
-        Navigator.of(context).pop(); // Dialogu kapat
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Şifreniz başarıyla güncellendi.'), backgroundColor: Colors.green),
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        String errorMessage = 'Bir hata oluştu.';
-        if (e.code == 'wrong-password') {
-          errorMessage = 'Mevcut şifreniz yanlış.';
-        } else if (e.code == 'weak-password') {
-          errorMessage = 'Yeni şifre çok zayıf. En az 6 karakter olmalı.';
-        } else {
-          errorMessage = 'Bir hata oluştu: ${e.message}';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Şifreyi Değiştir'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _currentPasswordController,
-                obscureText: !_currentPasswordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Mevcut Şifre',
-                  prefixIcon: const Icon(Icons.password),
-                  suffixIcon: IconButton(
-                    icon: Icon(_currentPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _currentPasswordVisible = !_currentPasswordVisible),
-                  ),
-                ),
-                validator: (value) => value!.isEmpty ? 'Lütfen mevcut şifrenizi girin.' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _newPasswordController,
-                obscureText: !_newPasswordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Yeni Şifre',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    icon: Icon(_newPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _newPasswordVisible = !_newPasswordVisible),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Lütfen yeni bir şifre girin.';
-                  if (value.length < 6) return 'Şifre en az 6 karakter olmalıdır.';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _confirmPasswordController,
-                obscureText: !_newPasswordVisible, // Yeni şifre ile aynı görünürlükte olmalı
-                decoration: const InputDecoration(
-                  labelText: 'Yeni Şifreyi Onayla',
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-                validator: (value) {
-                  if (value != _newPasswordController.text) return 'Şifreler eşleşmiyor.';
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-          child: const Text('İptal'),
-        ),
-        ElevatedButton(
-          onPressed: _isSaving ? null : _updatePassword,
-          child: _isSaving ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Güncelle'),
-        ),
-      ],
     );
   }
 }

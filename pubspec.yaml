@@ -50,6 +50,11 @@ dependencies:
   geocoding: ^4.0.0
   cloud_firestore: ^5.6.11
   url_launcher: ^6.3.1
+  google_mlkit_text_recognition: ^0.15.0 # (veya daha güncel bir sürüm)
+  image_picker: ^1.0.7
+  google_mlkit_document_scanner: ^0.4.0
+  image: ^4.0.17
+  path: ^1.8.3
 
 dev_dependencies:
   flutter_test:
