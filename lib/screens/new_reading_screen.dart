@@ -1,11 +1,11 @@
 // lib/new_reading_screen.dart
 // ===========================================================
-// FINAL CONSOLIDATED VERSION  v5.7  (2025‑07‑22)
+// FINAL CONSOLIDATED VERSION  v5.8  (2025‑07‑23)
 // -----------------------------------------------------------
 //  🔄  Ana iyileştirmeler
-//  • readingValue: Artık okunduğu gibi (örn: 190,154) gösteriliyor.
-//  • _saveOrUpdate: Kaydetme fonksiyonu, formatlı değeri doğru şekilde
-//    (örn: 190154) sayıya çevirecek şekilde güncellendi.
+//  • Debug Modu: AppBar menüsüne, son OCR taramasının ham metnini
+//    gösteren bir debug seçeneği eklendi.
+//  • _lastOcrResultText: Son tarama sonucunu saklamak için state eklendi.
 // ===========================================================
 
 import 'dart:io';
@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // YENİ: Clipboard için eklendi.
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
@@ -55,6 +56,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   final _locationTextCtrl = TextEditingController();
   final _invoiceAmountCtrl = TextEditingController();
 
+  // state
   DateTime _pickedTime = DateTime.now();
   DateTime? _pickedDueDate;
   Set<String> _selectedUnit = {'kWh'};
@@ -63,6 +65,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   bool _isSaving = false;
   bool _isScanning = false;
   bool get _isEdit => widget.readingToEdit != null;
+  String? _lastOcrResultText; // YENİ: Son OCR sonucunu saklamak için.
 
   // ---------------------------------------------------- lifecycle
   @override
@@ -127,6 +130,13 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       final recText = await recognizer.processImage(InputImage.fromFile(imgFile));
       await recognizer.close();
 
+      // YENİ: OCR sonucunu state'e kaydet.
+      if (mounted) {
+        setState(() {
+          _lastOcrResultText = recText.text;
+        });
+      }
+
       final data = _parse(recText);
       _populateFields(data);
 
@@ -161,76 +171,72 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
-  // ————————————————————————————————  ADVANCED PARSER v5.6 (NİHAİ STRATEJİ)
+  // ————————————————————————————————  ADVANCED PARSER
+  // Lütfen bu fonksiyonun tamamını kopyalayıp mevcut olanla değiştirin.
   Map<String, String> _parse(RecognizedText rec) {
     final lines = rec.blocks
         .expand((b) => b.lines.map((l) => _LineInfo(l.text, _norm(l.text), l.boundingBox)))
         .toList();
 
-    // --- TANIMLAMA KURALLARI (YENİ STRATEJİ) ---
     final specs = {
-
       'installationId': {
-
         'strategies': ['findRight','findBelow'],
-
-        // YENİ: Farklı faturalardaki alternatif ifadeler eklendi.
-
         'kw': ['tesisat no', 'sayac no',  'tekil kod','sayaç no','sayaç','sayac'],
-
-        're': [RegExp(r'(\b\d{7,14}\b)')], // YENİ: Numara uzunluğu aralığı genişletildi.
-
+        're': [RegExp(r'(\b\d{7,14}\b)')],
         'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no', 'musteri no'],
-
       },
-
       'invoiceAmount': {
-
         'strategies': ['findLeft', 'findBelow', 'findRight'],
-
-        // YENİ: Daha genel ifadeler eklendi.
-
         'kw': ['odenecek toplam tutar', 'toplam fatura tutari', 'son odeme tutari', 'toplam', 'odenecek'],
-
-        're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')], // Bu kural iyi, ondalıklı ve 2 haneli para formatını yakalar.
-
+        're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
         'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'tl', 'kr', 'krs', 'fatura tutari (', 'ara toplam','donem tutar','dönem tutarı'],
-
-        // Satırında mutlaka ondalık kontrolü (çok önemli)
-
         'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
-
       },
-
       'dueDate': {
-
         'strategies': ['findRight', 'findBelow'],
-
-        // YENİ: Kısaltmalar eklendi.
-
         'kw': ['son odeme tarihi', 's o t', 'son odeme'],
-
-        're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')], // YENİ: Ayraç olarak '-' eklendi.
-
+        're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
         'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],
-
       },
-
       'readingValue': {
-        'strategies': ['findRight'],
-        'kw': ['tuketim','tüketim','enerji','enerji tuketim bedeli','bedel'],
-        're': [RegExp(r'(\b\d{1,3}(?:[.,]?\d{3})*\b)')],
-        'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'kadem', 'gece', 'gunduz', 'puant',
-          'ortalama','ortalama tuketim','orta','kwh/gun','kwh/gün','fatura ortalama tuketimi',
-          'fatura ortalama tüketimi','yuksek','yüksek','yuksek kademe','yüksek kademe'],
+        'strategies': ['findRight', 'findBelow'],
+        'kw': ['tuketim', 'tüketim', 'enerji'],
+        're': [RegExp(r'(\b\d{1,3}(?:[.,]?\s?\d{3})*\b)')],
+        'negKw': [
+          'fiyat', 'oran', 'tl', 'kr', 'krs', 'kadem', 'gece', 'gunduz', 'puant',
+          'ortalama','ortalama tuketim','orta','kwh/gun','kwh/gün',
+          'fatura ortalama tuketimi','yuksek kademe', 'endeks', 'indeks','yuksek','yüksek','kademe'
+          'bedel','TL'
+        ],
       },
-
     };
 
     final out = <String, String>{};
 
+    // =================================================================
+    // YENİ VE ÖNCELİKLİ KURAL: 'readingValue' İÇİN ÖZEL ARAMA
+    // =================================================================
+    // Geometrik analizden önce, metnin tamamında en güvenilir deseni arayalım.
+    final fullText = rec.text.replaceAll('\n', ' '); // Tüm metni tek satır yap
+
+    // Desen: "Enerji Tüketim Bedeli" ifadesinden sonra gelen ilk "190,154" formatındaki sayı
+    final directRe = RegExp(r'Enerji Tüketim Bedeli.*?[:\s]+(\d{1,3}[.,]\s?\d{3})\b', caseSensitive: false);
+    final match = directRe.firstMatch(fullText);
+
+    if (match != null && match.group(1) != null) {
+      // Eğer bu özel desenle bir sonuç bulursak, onu kullan ve başka arama yapma.
+      out['readingValue'] = match.group(1)!.replaceAll(' ', '');
+    }
+    // =================================================================
+
+
+    // Diğer tüm alanlar ve 'readingValue' bulunamazsa eski yöntem için döngü
     for (final entry in specs.entries) {
       final key = entry.key;
+
+      // Eğer 'readingValue' yukarıdaki özel kuralla zaten bulunduysa, bu adımı atla.
+      if (out.containsKey(key)) continue;
+
       final spec = entry.value as Map<String, dynamic>;
       final strategies = spec['strategies'] as List<String>;
       _Candidate? best;
@@ -241,6 +247,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       }
       if (best != null) out[key] = best.value;
     }
+
     // kWh gibi birimleri temizle
     if (out['readingValue'] != null) {
       out['readingValue'] = out['readingValue']!
@@ -264,14 +271,17 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       if (negKw.any((w) => l.normalizedText.contains(w))) continue;
       if (kw.any((w) => l.normalizedText.contains(w))) labels.add(l);
     }
+
     if (labels.isEmpty) return null;
 
     for (final l in lines) {
       if (negKw.any((w) => l.normalizedText.contains(w))) continue;
       if (lineFilter != null && !lineFilter(l.text)) continue;
 
-      if (fieldKey == 'readingValue' && (l.text.contains(',') || l.text.contains('.'))) {
+      // DEĞİŞİKLİK: 'readingValue' için olan özel filtreler burada kalacak.
+      if (fieldKey == 'readingValue') {
         if (RegExp(r'\b\d+[.,]\d{2}\b').hasMatch(l.text)) continue;
+        if (RegExp(r'\b\d+[.,]\d{4,}\b').hasMatch(l.text)) continue;
       }
 
       for (final r in res) {
@@ -283,6 +293,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         }
       }
     }
+
     if (vals.isEmpty) return null;
 
     for (final v in vals) {
@@ -297,12 +308,9 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     vals.removeWhere((v) => v.score == double.infinity);
     if (vals.isEmpty) return null;
 
-    if (fieldKey == 'readingValue') {
-      final closeCandidates = vals.where((c) => c.score < 350).toList();
-      if (closeCandidates.isEmpty) return null;
-      closeCandidates.sort((a, b) => _toDouble(b.value).compareTo(_toDouble(a.value)));
-      return closeCandidates.first;
-    }
+    // DEĞİŞİKLİK: 'readingValue' için olan özel "en büyük" seçme mantığını siliyoruz.
+    // Artık tüm alanlar aynı basit ve güvenilir mantığı kullanacak: en yakın olanı seç.
+    // if (fieldKey == 'readingValue') { ... } bloğu tamamen kaldırıldı.
 
     vals.sort((a, b) => a.score.compareTo(b.score));
     return vals.first;
@@ -343,7 +351,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     return v.top - k.bottom;
   }
 
-  // ───────────────────────────── UI HELPERS & POPULATE (DEĞİŞİKLİK) ─────────────────── //
+  // ───────────────────────────── UI HELPERS & POPULATE
   void _populateFields(Map<String, String> d) {
     setState(() {
       if (d['installationId'] != null) _installationIdCtrl.text = d['installationId']!;
@@ -353,8 +361,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
             .replaceAll(',', '.');
       }
       if (d['readingValue'] != null) {
-        // DEĞİŞİKLİK: Artık okunan değerdeki virgül temizlenmiyor.
-        // Değer, okunduğu gibi '190,154' şeklinde gösterilecek.
         _valueCtrl.text = d['readingValue']!;
       }
       if (d['dueDate'] != null) {
@@ -372,8 +378,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     });
   }
 
-  // ───────────────────── LOCATION & SAVE/UPDATE (DEĞİŞİKLİK) ───────────────────────── //
-
+  // ───────────────────── LOCATION & SAVE/UPDATE
   Future<void> _handleLocationPermission() async {
     setState(() => _isGettingLocation = true);
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -432,8 +437,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Giriş yapmalısınız.');
 
-      // DEĞİŞİKLİK: '190,154' gibi formatlı bir metni doğru sayıya çevirmek için
-      // hem virgül hem de nokta karakterlerini temizliyoruz.
       final readingValue = double.tryParse(
           _valueCtrl.text.trim().replaceAll(RegExp(r'[.,]'), '')) ?? 0.0;
 
@@ -535,8 +538,11 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  // DEĞİŞİKLİK: Kopyala butonu işlevsel hale getirildi.
                   TextButton(
                     onPressed: () {
+                      Clipboard.setData(ClipboardData(text: ocrText));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Metin panoya kopyalandı.')));
                       Navigator.of(context).pop();
                     },
                     child: const Text('Kopyala'),
@@ -564,17 +570,54 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
             const Padding(padding: EdgeInsets.all(16.0), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white)))
           else ...[
             IconButton(icon: const Icon(Icons.camera_alt_outlined), tooltip: 'Faturayı Tara', onPressed: _scanWithOcr),
+            // DEĞİŞİKLİK: PopupMenuButton güncellendi.
             PopupMenuButton<String>(
               onSelected: (value) {
                 switch (value) {
                   case 'manual_scan': _showManualInputDialog(); break;
                   case 'scan_tips': _showScanTipsDialog(); break;
+                  case 'show_debug':
+                    if (_lastOcrResultText != null) {
+                      _showOcrDebugDialog(_lastOcrResultText!);
+                    }
+                    break;
                 }
               },
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'manual_scan', child: ListTile(leading: Icon(Icons.edit), title: Text('Manuel Giriş'), contentPadding: EdgeInsets.zero)),
-                const PopupMenuItem(value: 'scan_tips', child: ListTile(leading: Icon(Icons.help_outline), title: Text('Tarama İpuçları'), contentPadding: EdgeInsets.zero)),
-              ],
+              itemBuilder: (context) {
+                final menuItems = <PopupMenuEntry<String>>[
+                  const PopupMenuItem(
+                    value: 'manual_scan',
+                    child: ListTile(
+                      leading: Icon(Icons.edit),
+                      title: Text('Manuel Giriş'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'scan_tips',
+                    child: ListTile(
+                      leading: Icon(Icons.help_outline),
+                      title: Text('Tarama İpuçları'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ];
+                // Yalnızca bir tarama yapıldıysa debug menüsünü göster
+                if (_lastOcrResultText != null) {
+                  menuItems.add(const PopupMenuDivider());
+                  menuItems.add(
+                    const PopupMenuItem(
+                      value: 'show_debug',
+                      child: ListTile(
+                        leading: Icon(Icons.bug_report_outlined),
+                        title: Text('Son Taramayı Göster (Debug)'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  );
+                }
+                return menuItems;
+              },
             ),
           ],
         ],
