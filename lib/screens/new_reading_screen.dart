@@ -171,84 +171,130 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
+
+
   // ————————————————————————————————  ADVANCED PARSER
   // Lütfen bu fonksiyonun tamamını kopyalayıp mevcut olanla değiştirin.
+  // Lütfen _parse fonksiyonunun TAMAMINI bu nihai sürümle değiştirin.
   Map<String, String> _parse(RecognizedText rec) {
-    final lines = rec.blocks
-        .expand((b) => b.lines.map((l) => _LineInfo(l.text, _norm(l.text), l.boundingBox)))
+    final elements = rec.blocks
+        .expand((b) => b.lines
+        .expand((l) => l.elements.map((e) => _LineInfo(e.text, _norm(e.text), e.boundingBox))))
         .toList();
 
-    final specs = {
+    // =================================================================
+    // ADIM 1: FATURA PROFİLLERİNİ (ŞABLONLARINI) TANIMLAMA
+    // =================================================================
+
+    // PROFİL 1: İZSU SU FATURASI KURALLARI
+    final izsuSpecs = {
       'installationId': {
-        'strategies': ['findRight','findBelow'],
-        'kw': ['tesisat no', 'sayac no',  'tekil kod','sayaç no','sayaç','sayac'],
+        'strategies': ['findRight', 'findBelow'],
+        'kw': ['sayaç','sayac','sayaç no','sayac no'],
         're': [RegExp(r'(\b\d{7,14}\b)')],
-        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no', 'musteri no'],
+        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no', 'musteri no','abone no'],
       },
       'invoiceAmount': {
         'strategies': ['findLeft', 'findBelow', 'findRight'],
-        'kw': ['odenecek toplam tutar', 'toplam fatura tutari', 'son odeme tutari', 'toplam', 'odenecek'],
+        'kw': ['odenecek toplam tutar'], // Sadece en net ifade
         're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
-        'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'tl', 'kr', 'krs', 'fatura tutari (', 'ara toplam','donem tutar','dönem tutarı'],
+        // 'toplam' kelimesi artık burada güvenle yasaklanabilir.
+        'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari', 'ara toplam',
+          'izsu fatura toplami', 'toplam', 'su tuketim'],
         'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
       },
       'dueDate': {
-        'strategies': ['findRight', 'findBelow'],
-        'kw': ['son odeme tarihi', 's o t', 'son odeme'],
+        'strategies': ['findRight'],
+        'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','SON ÖDEME TARİHİ','SON ODEME TARİHİ','SON ODEME TARIHI'],
+        're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
+        // 'son okuma tarihi' ifadesi net bir şekilde yasaklandı.
+        'negKw': ['okuma','OKUMA'
+        ],
+      },
+      'readingValue': {
+        'strategies': ['findRight'],
+        'kw': ['tuketim', 'tüketim'], // Sadece en net ifade
+        're': [RegExp(r'\b(\d+)\b')], // Su faturasında genellikle tam sayı
+        // Hacim ile karışabilecek TÜM parasal ifadeler yasaklandı.
+        'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'kadem', 'tarife', 'bedel', 'bedeli',
+          'tutar', 'ortalama', 'endeks', 'indeks', 'gun say', 'su tuketim bedeli','kademe','1 kademe','2 kademe',
+          'su birim fiyat','1 kad','2 kad','tüketim gün say','tuketim gun say','TÜKETİM GÜN SAY','TUKETİM GUN SAY'
+          ,'TUKETIM GUN SAY'],
+      },
+    };
+
+    // PROFİL 2: GEDİZ ELEKTRİK FATURASI KURALLARI
+    final gedizSpecs = {
+      'installationId': {
+        'strategies': ['findBelow'],
+        'kw': ['tekil kod/tesisat no','tesisat no', 'tekil kod','tekil','tesisat'],
+        're': [RegExp(r'(\b\d{7,14}\b)')],
+        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no','seri no','sozlesme hesap no','sozleşme','sözleşme'],
+      },
+      'invoiceAmount': {
+        'strategies': ['findBelow'],
+        'kw': ['odenecek tutar', 'toplam fatura tutari'],
+        're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
+        // Burada 'toplam' yasaklı değil, çünkü 'toplam fatura tutari'nda kullanılıyor.
+        'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari'],
+        'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
+      },
+      'dueDate': {
+        'strategies': ['findBelow'],
+        'kw': ['son odeme tarihi', 's o t'],
         're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
         'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],
       },
       'readingValue': {
         'strategies': ['findRight', 'findBelow'],
-        'kw': ['tuketim', 'tüketim', 'enerji'],
-        're': [RegExp(r'(\b\d{1,3}(?:[.,]?\s?\d{3})*\b)')],
-        'negKw': [
-          'fiyat', 'oran', 'tl', 'kr', 'krs', 'kadem', 'gece', 'gunduz', 'puant',
-          'ortalama','ortalama tuketim','orta','kwh/gun','kwh/gün',
-          'fatura ortalama tuketimi','yuksek kademe', 'endeks', 'indeks','yuksek','yüksek','kademe'
-          'bedel','TL'
+        'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim','dusuk kademe','düşük kademe','düsük kademe'],
+        're': [RegExp(r'(\b\d{1,10}(?:[.,]?\s?\d{3})*\b)')], // Elektrikte ondalıklı olabilir
+        'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'bedel(tl)', // Parasal ifadeler
+        'yüksek kademe', 'yuksek kademe', // Yanlış kademeyi engelle
+        'gece', 'gunduz', 'puant', 'tek zaman', // Zaman dilimlerini engelle
+        'endeks', 'indeks', 'fark', // Endeks tablosundaki diğer sütunları engelle
+        'ortalama', // Ortalama tüketimi engelle
+        'sayac no', 'abone no', 'tesisat no', 'fatura no', // Numaraları engelle
+        'kwh', 'gun say', 'gün say' // Birimleri ve gün sayısını engelle],
         ],
       },
     };
 
+    // =================================================================
+    // ADIM 2: FATURAYI TANI VE DOĞRU PROFİLİ SEÇ
+    // =================================================================
+    final fullText = _norm(rec.text);
+    Map<String, dynamic> specs;
+
+    if (fullText.contains('izsu')) {
+      print("İZSU Fatura Profili Seçildi.");
+      specs = izsuSpecs;
+    } else if (fullText.contains('gediz')) {
+      print("Gediz Fatura Profili Seçildi.");
+      specs = gedizSpecs;
+    } else {
+      print("Varsayılan (Gediz) Fatura Profili Seçildi.");
+      specs = gedizSpecs; // Veya genel bir varsayılan profil
+    }
+
+    // =================================================================
+    // ADIM 3: SEÇİLEN PROFİL İLE AYRIŞTIRMA YAP
+    // =================================================================
     final out = <String, String>{};
 
-    // =================================================================
-    // YENİ VE ÖNCELİKLİ KURAL: 'readingValue' İÇİN ÖZEL ARAMA
-    // =================================================================
-    // Geometrik analizden önce, metnin tamamında en güvenilir deseni arayalım.
-    final fullText = rec.text.replaceAll('\n', ' '); // Tüm metni tek satır yap
-
-    // Desen: "Enerji Tüketim Bedeli" ifadesinden sonra gelen ilk "190,154" formatındaki sayı
-    final directRe = RegExp(r'Enerji Tüketim Bedeli.*?[:\s]+(\d{1,3}[.,]\s?\d{3})\b', caseSensitive: false);
-    final match = directRe.firstMatch(fullText);
-
-    if (match != null && match.group(1) != null) {
-      // Eğer bu özel desenle bir sonuç bulursak, onu kullan ve başka arama yapma.
-      out['readingValue'] = match.group(1)!.replaceAll(' ', '');
-    }
-    // =================================================================
-
-
-    // Diğer tüm alanlar ve 'readingValue' bulunamazsa eski yöntem için döngü
     for (final entry in specs.entries) {
       final key = entry.key;
-
-      // Eğer 'readingValue' yukarıdaki özel kuralla zaten bulunduysa, bu adımı atla.
-      if (out.containsKey(key)) continue;
-
       final spec = entry.value as Map<String, dynamic>;
       final strategies = spec['strategies'] as List<String>;
       _Candidate? best;
 
       for (final strat in strategies) {
-        final cand = _findCandidate(lines, spec, _getScorer(strat), key);
+        final cand = _findCandidate(elements, spec, _getScorer(strat), key);
         if (cand != null && (best == null || cand.score < best.score)) best = cand;
       }
       if (best != null) out[key] = best.value;
     }
 
-    // kWh gibi birimleri temizle
     if (out['readingValue'] != null) {
       out['readingValue'] = out['readingValue']!
           .replaceAll(RegExp(r'\s*(kwh|m3|m³)', caseSensitive: false), '')
@@ -257,49 +303,84 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     return out;
   }
 
-  _Candidate? _findCandidate(List<_LineInfo> lines, Map<String, dynamic> spec,
+  // BU YARDIMCI FONKSİYONU SINIFINIZA EKLEYİN VEYA GÜNCELLEYİN
+  DateTime? _parseDate(String dateStr) {
+    // Tarih ayraçlarını standart hale getir
+    final cleanDate = dateStr.replaceAll('/', '.').replaceAll('-', '.');
+
+    // Olası tarih formatlarını sırayla dene
+    final formats = [
+      DateFormat('dd.MM.yyyy'), // Örn: 26.05.2025
+      DateFormat('dd.MM.yy'),   // Örn: 26.05.25
+    ];
+
+    for (final format in formats) {
+      try {
+        return format.parseStrict(cleanDate);
+      } catch (_) {
+        // Format uyuşmazsa bir sonrakini dene
+      }
+    }
+    return null; // Hiçbir format uyuşmazsa null döndür
+  }
+
+  // Lütfen bu fonksiyonun tamamını kopyalayıp mevcut olanla değiştirin.
+  // Lütfen _findCandidate fonksiyonunun TAMAMINI bu güncellenmiş sürümle değiştirin.
+  // Lütfen _findCandidate fonksiyonunun TAMAMINI bu güncellenmiş sürümle değiştirin.
+  _Candidate? _findCandidate(List<_LineInfo> elements, Map<String, dynamic> spec,
       double Function(Rect, Rect) scorer, String fieldKey) {
+    // ... fonksiyonun başındaki kw, negKw, res, lineFilter tanımlamaları aynı kalacak ...
     final kw = (spec['kw'] as List<String>).map(_norm).toList();
     final negKw = (spec['negKw'] as List<String>).map(_norm).toList();
     final res = spec['re'] as List<RegExp>;
     final lineFilter = spec['lineFilter'] as bool Function(String)?;
 
-    final labels = <_LineInfo>[];
-    final vals = <_Candidate>[];
-
-    for (final l in lines) {
-      if (negKw.any((w) => l.normalizedText.contains(w))) continue;
-      if (kw.any((w) => l.normalizedText.contains(w))) labels.add(l);
+    final labels = <_Candidate>[];
+    // ... etiket bulma ('labels' listesini doldurma) döngüsü aynı kalacak ...
+    for (final phrase in kw) {
+      final phraseWords = phrase.split(' ');
+      for (int i = 0; i < elements.length; i++) {
+        if (elements[i].normalizedText == phraseWords.first) {
+          int matchedWords = 1;
+          Rect combinedBox = elements[i].boundingBox;
+          for (int j = 1; j < phraseWords.length && (i + j) < elements.length; j++) {
+            final nextElement = elements[i + j];
+            if (nextElement.normalizedText == phraseWords[j] &&
+                (nextElement.boundingBox.left - combinedBox.right).abs() < nextElement.boundingBox.width) {
+              matchedWords++;
+              combinedBox = combinedBox.expandToInclude(nextElement.boundingBox);
+            } else {
+              break;
+            }
+          }
+          if (matchedWords > 0) {
+            labels.add(_Candidate(value: phrase, boundingBox: combinedBox, score: -matchedWords.toDouble()));
+          }
+        }
+      }
     }
 
     if (labels.isEmpty) return null;
 
-    for (final l in lines) {
-      if (negKw.any((w) => l.normalizedText.contains(w))) continue;
-      if (lineFilter != null && !lineFilter(l.text)) continue;
-
-      // DEĞİŞİKLİK: 'readingValue' için olan özel filtreler burada kalacak.
-      if (fieldKey == 'readingValue') {
-        if (RegExp(r'\b\d+[.,]\d{2}\b').hasMatch(l.text)) continue;
-        if (RegExp(r'\b\d+[.,]\d{4,}\b').hasMatch(l.text)) continue;
-      }
-
+    // ... değer bulma ('vals' listesini doldurma) döngüsü aynı kalacak ...
+    final vals = <_Candidate>[];
+    for (final el in elements) {
+      if (lineFilter != null && !lineFilter(el.text)) continue;
+      if (negKw.any((w) => el.normalizedText == w)) continue;
       for (final r in res) {
-        for (final m in r.allMatches(l.text)) {
-          final value = m.group(1);
-          if (value != null && value.isNotEmpty) {
-            vals.add(_Candidate(value: value, boundingBox: l.boundingBox));
-          }
+        if (r.hasMatch(el.text)) {
+          vals.add(_Candidate(value: el.text, boundingBox: el.boundingBox));
         }
       }
     }
 
     if (vals.isEmpty) return null;
 
+    // ... puanlama ('vals' içindeki skorları güncelleme) döngüsü aynı kalacak ...
     for (final v in vals) {
       double minD = double.infinity;
       for (final l in labels) {
-        final d = scorer(l.boundingBox, v.boundingBox);
+        final d = scorer(l.boundingBox, v.boundingBox) + (l.score * 10);
         if (d < minD) minD = d;
       }
       v.score = minD;
@@ -308,13 +389,41 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     vals.removeWhere((v) => v.score == double.infinity);
     if (vals.isEmpty) return null;
 
-    // DEĞİŞİKLİK: 'readingValue' için olan özel "en büyük" seçme mantığını siliyoruz.
-    // Artık tüm alanlar aynı basit ve güvenilir mantığı kullanacak: en yakın olanı seç.
-    // if (fieldKey == 'readingValue') { ... } bloğu tamamen kaldırıldı.
-
+    // Önce adayları geometrik skora göre sırala
     vals.sort((a, b) => a.score.compareTo(b.score));
+
+    // =================================================================
+    // YENİ GÜNCELLEME: 'dueDate' İÇİN ÖZEL SEÇİM MANTIĞI
+    // =================================================================
+    if (fieldKey == 'dueDate' && vals.isNotEmpty) {
+      // Geometrik olarak en yakın adayları al (örneğin skoru 100'den küçük olanlar)
+      // Bu, alakasız yerlerdeki tarihlerin seçilmesini engeller.
+      final closeCandidates = vals.where((v) => v.score < 100).toList();
+
+      // Eğer hiç yakın aday yoksa veya sadece 1 tane varsa, en yakın olanı seçmek yeterlidir.
+      if (closeCandidates.length <= 1) {
+        return vals.first;
+      }
+
+      // Yakın adayları KRONOLOJİK OLARAK (en geçten en erkeğe) sırala
+      closeCandidates.sort((a, b) {
+        DateTime? dateA = _parseDate(a.value);
+        DateTime? dateB = _parseDate(b.value);
+        if (dateA == null) return 1;   // a'yı sona at
+        if (dateB == null) return -1;  // b'yi sona at
+        return dateB.compareTo(dateA); // b, a'dan sonra ise pozitif döner, b'yi öne alır.
+      });
+
+      // Kronolojik olarak en geç olan tarihi (listenin ilk elemanını) döndür.
+      return closeCandidates.first;
+    }
+    // =================================================================
+
+    // Diğer tüm alanlar için en yakın adayı döndür
     return vals.first;
   }
+
+
 
   double Function(Rect, Rect) _getScorer(String name) {
     switch (name) {
@@ -328,26 +437,44 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         return (a, b) => double.infinity;
     }
   }
+  // Lütfen bu 3 fonksiyonu da kopyalayıp eskileriyle değiştirin.
 
+// _scoreRightOf fonksiyonu güncellendi
   double _scoreRightOf(Rect k, Rect v) {
+    // Dikey hizalama toleransı %50'den %30'a düşürüldü.
     final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
-    if (yOverlap < (k.height * 0.5)) return double.infinity;
+    if (yOverlap < (k.height * 0.3)) return double.infinity;
+
     final dx = v.left - k.right;
-    if (dx < 0) return double.infinity;
-    return dx;
+    // Değerin, etiketin soluna hafifçe (%15 kadar) taşmasına izin verilir.
+    if (dx < -k.width * 0.15) return double.infinity;
+
+    // Mutlak değer kullanılarak hem sağındaki hem de hafifçe solundaki adaylar değerlendirilir.
+    return dx.abs();
   }
 
+// _scoreLeftOf fonksiyonu güncellendi
   double _scoreLeftOf(Rect k, Rect v) {
+    // Dikey hizalama toleransı %50'den %30'a düşürüldü.
     final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
-    if (yOverlap < (k.height * 0.5)) return double.infinity;
+    if (yOverlap < (k.height * 0.3)) return double.infinity;
+
     final dx = k.left - v.right;
-    if (dx < 0) return double.infinity;
-    return dx;
+    // Değerin, etiketin sağına hafifçe (%15 kadar) taşmasına izin verilir.
+    if (dx < -k.width * 0.15) return double.infinity;
+
+    return dx.abs();
   }
 
+// _scoreBelow fonksiyonu güncellendi
   double _scoreBelow(Rect k, Rect v) {
-    final horizontallyAligned = (v.center.dx - k.center.dx).abs() < k.width * 0.8;
+    // Yatay hizalama toleransı artırılarak farklı sütun genişliklerine uyum sağlandı.
+    final horizontallyAligned = (v.center.dx - k.center.dx).abs() < (k.width * 1.5);
+
+    // Değerin etiketin altında olduğundan emin ol
     if (!horizontallyAligned || v.top <= k.bottom) return double.infinity;
+
+    // Dikey mesafeyi döndür
     return v.top - k.bottom;
   }
 
