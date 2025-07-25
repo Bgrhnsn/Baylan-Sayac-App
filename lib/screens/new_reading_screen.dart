@@ -210,15 +210,30 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         'negKw': ['okuma','OKUMA','ilk'],
       },
       'readingValue': {
-        'strategies': ['findBelow'],
+        'strategies': ['findRight'],
         // Anahtar kelimemiz net: Sadece "tüketim" kelimesini arıyoruz.
-        'kw': ['son endeks'],
+        'kw': ['tuketim'],
         // İZSU'da tüketim her zaman tam sayıdır.
         're': [RegExp(r'^\d+$')],
         // Akıllı motorumuza hangi ifadelerin yasaklı olduğunu söylüyoruz.
         'negKw': [
           // Çok kelimeli ifadeler artık doğru şekilde tanınacak:
-          'tüketim','tuketim','kade','2','1','kademe'
+          'su bedeli',
+          'tüketim gün say',
+          'ilk endeks',
+          'son endeks',
+          'su birim fiyat',
+          'atık su birim fiyat',
+          'bölge kodu',
+
+          // Parasal ve diğer alakasız tekil kelimeler:
+          'bedel',
+          'tutar',
+          'toplam',
+          'kdv',
+          'kademe', // '1 Kademe', '2 Kademe' gibi ifadeleri engeller
+          'endeks',
+          'oran'
         ],
       },
     };
@@ -246,9 +261,9 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],
       },
       'readingValue': {
-        'strategies': ['findRight', 'findBelow'],
-        'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim','dusuk kademe','düşük kademe','düsük kademe'],
-        're': [RegExp(r'\b\d{1,10}(?:[.,]\s?\d{3})*\b')], // Elektrikte ondalıklı olabilir
+        'strategies': ['findRight'],
+        'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim'],
+        're': [RegExp(r'\b\d{1,3}(?:\.\d{3})*,\d{3}\b')], // Elektrikte ondalıklı olabilir
         'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'bedel(tl)', // Parasal ifadeler
         'yüksek kademe', 'yuksek kademe', // Yanlış kademeyi engelle
         'gece', 'gunduz', 'puant', 'tek zaman', // Zaman dilimlerini engelle
@@ -403,7 +418,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         final isToTheRight = el.boundingBox.left > negRect.right;
         final isHorizontallyClose =
             (el.boundingBox.left - negRect.right).abs() <
-                (el.boundingBox.width * 5);
+                (el.boundingBox.width * 3);
         return isVerticallyAligned && isToTheRight && isHorizontallyClose;
       });
 
