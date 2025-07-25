@@ -1,45 +1,42 @@
 // lib/new_reading_screen.dart
 // ===========================================================
-// FINAL CONSOLIDATED VERSION  v5.8  (2025‑07‑23)
-// -----------------------------------------------------------
-//  🔄  Ana iyileştirmeler
-//  • Debug Modu: AppBar menüsüne, son OCR taramasının ham metnini
-//    gösteren bir debug seçeneği eklendi.
-//  • _lastOcrResultText: Son tarama sonucunu saklamak için state eklendi.
+// yeni fatura ekleme alanı google ml kit bağlandı
+// ml kit ile algılanan metin regex kurallarından geçerek istediğimiz verileri almaya çalışır
+//
 // ===========================================================
 
-import 'dart:io';
-import 'dart:math' as math;
+import 'dart:io';//dosya işlemleri
+import 'dart:math' as math;//matematiksel işlemler
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // YENİ: Clipboard için eklendi.
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:intl/intl.dart';
-import 'package:sayacfaturapp/models/meter_reading.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';//firebase veritabanına veri kaydetmek
+import 'package:firebase_auth/firebase_auth.dart';//kimlik doğrulama için
+import 'package:flutter/material.dart';//temel görsel bileşenler
+import 'package:flutter/services.dart'; // temel servislere erişim hata ayıklama ekranı için
+import 'package:geocoding/geocoding.dart';//lokasyon
+import 'package:geolocator/geolocator.dart';//lokasyon
+import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';//kamera butonuna basılınca çıkan ekran
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';//ocr
+import 'package:intl/intl.dart';//tarih ve sayıları farklı formata almak için
+import 'package:sayacfaturapp/models/meter_reading.dart';//model importu
 
 // ———————————————————————————————————————————  Helpers
-class _Candidate {
+class _Candidate {//aranan bilgi olmaya adayları seçme
   _Candidate({required this.value, required this.boundingBox, this.score = 0});
-  final String value;
-  final Rect boundingBox;
-  double score;
+  final String value;//metin
+  final Rect boundingBox;//metin faturanın neresinde
+  double score;//aday ne kadar doğru
 }
-class _LineInfo {
+class _LineInfo {//ocr dan gelen her bir metin parçasını , orjinal ve temizlenmiş ve konumunu pakette tutar
   _LineInfo(this.text, this.normalizedText, this.boundingBox);
-  final String text;
-  final String normalizedText;
-  final Rect boundingBox;
+  final String text;//orjinal metin
+  final String normalizedText;//normalleştirilmiş metin
+  final Rect boundingBox;//metnin konumu
 }
 
-double _toDouble(String s) =>
+double _toDouble(String s) =>//12548,2655 -> 12548.2655
     double.tryParse(s.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
 
-// ———————————————————————————————————————————  Widget
+//
 class NewReadingScreen extends StatefulWidget {
   const NewReadingScreen({super.key, this.readingToEdit});
   final MeterReading? readingToEdit;
@@ -47,9 +44,9 @@ class NewReadingScreen extends StatefulWidget {
   State<NewReadingScreen> createState() => _NewReadingScreenState();
 }
 
-class _NewReadingScreenState extends State<NewReadingScreen> {
+class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
   // controllers
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();//kaydet butonuna basınca doğrulama kontorlü
   final _meterNameCtrl = TextEditingController();
   final _installationIdCtrl = TextEditingController();
   final _valueCtrl = TextEditingController();
@@ -58,18 +55,18 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
   // state
   DateTime _pickedTime = DateTime.now();
-  DateTime? _pickedDueDate;
+  DateTime? _pickedDueDate;//son ödeme tarihi
   Set<String> _selectedUnit = {'kWh'};
   Position? _gpsPos;
-  bool _isGettingLocation = false;
-  bool _isSaving = false;
-  bool _isScanning = false;
-  bool get _isEdit => widget.readingToEdit != null;
-  String? _lastOcrResultText; // YENİ: Son OCR sonucunu saklamak için.
+  bool _isGettingLocation = false;//konum alırken ki animasyon
+  bool _isSaving = false;//kayıt ederkenki animasyon
+  bool _isScanning = false;//tarama ekranına geçerken ki animasyon
+  bool get _isEdit => widget.readingToEdit != null;//veri düzenleme işlemi yeni kayıt mı düzenlememi mi
+  String? _lastOcrResultText; // Son OCR sonucunu saklamak için.
 
   // ---------------------------------------------------- lifecycle
   @override
-  void initState() {
+  void initState() {//ekranın yaşam döngüsünü yönetir
     super.initState();
     if (_isEdit) {
       final r = widget.readingToEdit!;
@@ -99,7 +96,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   }
 
   @override
-  void dispose() {
+  void dispose() {//ekran kapanınca controllerları hafızadan silme
     _meterNameCtrl.dispose();
     _installationIdCtrl.dispose();
     _valueCtrl.dispose();
@@ -108,7 +105,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     super.dispose();
   }
 
-  // ————————————————————————————————  OCR FLOW
+  // OCR ve documentscanner
   Future<void> _scanWithOcr() async {
     final scanner = DocumentScanner(
       options: DocumentScannerOptions(
@@ -119,27 +116,27 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       ),
     );
 
-    setState(() => _isScanning = true);
+    setState(() => _isScanning = true);//yükleniyor animasyonu
     try {
-      final result = await scanner.scanDocument();
+      final result = await scanner.scanDocument();//kamera ve galeri ekranı
       await scanner.close();
-      if (result.images.isEmpty) return;
+      if (result.images.isEmpty) return;//seçim resulta atanır iptalsa boş
 
       final imgFile = File(result.images.first);
       final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final recText = await recognizer.processImage(InputImage.fromFile(imgFile));
       await recognizer.close();
 
-      // YENİ: OCR sonucunu state'e kaydet.
+      // OCR sonucunu state'e kaydet.
       if (mounted) {
         setState(() {
-          _lastOcrResultText = recText.text;
+          _lastOcrResultText = recText.text;//orjinal metni debug için sakla
         });
       }
 
-      final data = _parse(recText);
-      _populateFields(data);
-
+      final data = _parse(recText);//metin analizi
+      _populateFields(data);//alanları doldurma
+      //hata kontrol
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(data.isEmpty
@@ -173,18 +170,13 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
 
 
-  // ————————————————————————————————  ADVANCED PARSER
-  // Lütfen bu fonksiyonun tamamını kopyalayıp mevcut olanla değiştirin.
-  // Lütfen _parse fonksiyonunun TAMAMINI bu nihai sürümle değiştirin.
+  // istediğimiz kelimeleri bulma
   Map<String, String> _parse(RecognizedText rec) {
     final elements = rec.blocks
         .expand((b) => b.lines
         .expand((l) => l.elements.map((e) => _LineInfo(e.text, _norm(e.text), e.boundingBox))))
         .toList();
-
-    // =================================================================
-    // ADIM 1: FATURA PROFİLLERİNİ (ŞABLONLARINI) TANIMLAMA
-    // =================================================================
+//yukarı metin temizleme
 
     // PROFİL 1: İZSU SU FATURASI KURALLARI
     final izsuSpecs = {
@@ -206,18 +198,13 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         'strategies': ['findRight','findBelow'],
         'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','SON ÖDEME TARİHİ','SON ODEME TARİHİ','SON ODEME TARIHI'],
         're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
-        // 'son okuma tarihi' ifadesi net bir şekilde yasaklandı.
         'negKw': ['okuma','OKUMA','ilk'],
       },
       'readingValue': {
         'strategies': ['findRight'],
-        // Anahtar kelimemiz net: Sadece "tüketim" kelimesini arıyoruz.
         'kw': ['tuketim'],
-        // İZSU'da tüketim her zaman tam sayıdır.
         're': [RegExp(r'^\d+$')],
-        // Akıllı motorumuza hangi ifadelerin yasaklı olduğunu söylüyoruz.
         'negKw': [
-          // Çok kelimeli ifadeler artık doğru şekilde tanınacak:
           'su bedeli',
           'tüketim gün say',
           'ilk endeks',
@@ -225,9 +212,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
           'su birim fiyat',
           'atık su birim fiyat',
           'bölge kodu',
-
-          // Parasal ve diğer alakasız tekil kelimeler:
-          'bedel',
           'tutar',
           'toplam',
           'kdv',
@@ -250,7 +234,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         'strategies': ['findBelow'],
         'kw': ['odenecek tutar', 'toplam fatura tutari','ödenecek tutar','tutar'],
         're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
-        // Burada 'toplam' yasaklı değil, çünkü 'toplam fatura tutari'nda kullanılıyor.
         'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari'],
         'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
       },
@@ -322,10 +305,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
   }
 
 
-
-
-  // Lütfen bu fonksiyonun tamamını projenizdeki mevcut fonksiyonla değiştirin.
-  /// Bu, _findCandidate fonksiyonunun nihai ve güncellenmiş versiyonudur.
   /// Çok kelimeli negatif ifadeleri tanıyabilir ve belirsizlik sorunlarını çözer.
   _Candidate? _findCandidate(List<_LineInfo> elements, Map<String, dynamic> spec,
       double Function(Rect, Rect) scorer, String fieldKey) {
@@ -508,7 +487,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
 // _scoreRightOf fonksiyonu güncellendi
   double _scoreRightOf(Rect k, Rect v) {
-    // Dikey hizalama toleransı %50'den %30'a düşürüldü.
     final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
     if (yOverlap < (k.height * 0.3)) return double.infinity;
 
@@ -522,7 +500,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
 // _scoreLeftOf fonksiyonu güncellendi
   double _scoreLeftOf(Rect k, Rect v) {
-    // Dikey hizalama toleransı %50'den %30'a düşürüldü.
     final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
     if (yOverlap < (k.height * 0.3)) return double.infinity;
 
@@ -535,7 +512,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
 // _scoreBelow fonksiyonu güncellendi
   double _scoreBelow(Rect k, Rect v) {
-    // Yatay hizalama toleransı artırılarak farklı sütun genişliklerine uyum sağlandı.
     final horizontallyAligned = (v.center.dx - k.center.dx).abs() < (k.width * 1.5);
 
     // Değerin etiketin altında olduğundan emin ol
@@ -623,9 +599,9 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       if (mounted) setState(() => _isGettingLocation = false);
     }
   }
-
+//veritabanına kaydetme
   Future<void> _saveOrUpdate() async {
-    if (!_formKey.currentState!.validate() || _isSaving) return;
+    if (!_formKey.currentState!.validate() || _isSaving) return;//zorunlu alanların kontrolü
     setState(() => _isSaving = true);
     try {
       final user = FirebaseAuth.instance.currentUser;
