@@ -192,34 +192,34 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         'strategies': ['findRight', 'findBelow'],
         'kw': ['sayaç','sayac','sayaç no','sayac no'],
         're': [RegExp(r'(\b\d{7,14}\b)')],
-        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no', 'musteri no','abone no'],
+        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura', 'musteri','abone'],
       },
       'invoiceAmount': {
-        'strategies': ['findLeft', 'findBelow', 'findRight'],
-        'kw': ['odenecek toplam tutar'], // Sadece en net ifade
+        'strategies': ['findBelow', 'findRight'],
+        'kw': ['odenecek toplam tutar'],
         're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
-        // 'toplam' kelimesi artık burada güvenle yasaklanabilir.
         'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari', 'ara toplam',
           'izsu fatura toplami', 'toplam', 'su tuketim'],
         'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
       },
       'dueDate': {
-        'strategies': ['findRight'],
+        'strategies': ['findRight','findBelow'],
         'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','SON ÖDEME TARİHİ','SON ODEME TARİHİ','SON ODEME TARIHI'],
         're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
         // 'son okuma tarihi' ifadesi net bir şekilde yasaklandı.
-        'negKw': ['okuma','OKUMA'
-        ],
+        'negKw': ['okuma','OKUMA','ilk'],
       },
       'readingValue': {
-        'strategies': ['findRight'],
-        'kw': ['tuketim', 'tüketim'], // Sadece en net ifade
-        're': [RegExp(r'\b(\d+)\b')], // Su faturasında genellikle tam sayı
-        // Hacim ile karışabilecek TÜM parasal ifadeler yasaklandı.
-        'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'kadem', 'tarife', 'bedel', 'bedeli',
-          'tutar', 'ortalama', 'endeks', 'indeks', 'gun say', 'su tuketim bedeli','kademe','1 kademe','2 kademe',
-          'su birim fiyat','1 kad','2 kad','tüketim gün say','tuketim gun say','TÜKETİM GÜN SAY','TUKETİM GUN SAY'
-          ,'TUKETIM GUN SAY'],
+        'strategies': ['findBelow'],
+        // Anahtar kelimemiz net: Sadece "tüketim" kelimesini arıyoruz.
+        'kw': ['son endeks'],
+        // İZSU'da tüketim her zaman tam sayıdır.
+        're': [RegExp(r'^\d+$')],
+        // Akıllı motorumuza hangi ifadelerin yasaklı olduğunu söylüyoruz.
+        'negKw': [
+          // Çok kelimeli ifadeler artık doğru şekilde tanınacak:
+          'tüketim','tuketim','kade','2','1','kademe'
+        ],
       },
     };
 
@@ -229,11 +229,11 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
         'strategies': ['findBelow'],
         'kw': ['tekil kod/tesisat no','tesisat no', 'tekil kod','tekil','tesisat'],
         're': [RegExp(r'(\b\d{7,14}\b)')],
-        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura no','seri no','sozlesme hesap no','sozleşme','sözleşme'],
+        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura','seri','sozlesme hesap','sozleşme','sözleşme'],
       },
       'invoiceAmount': {
         'strategies': ['findBelow'],
-        'kw': ['odenecek tutar', 'toplam fatura tutari'],
+        'kw': ['odenecek tutar', 'toplam fatura tutari','ödenecek tutar','tutar'],
         're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
         // Burada 'toplam' yasaklı değil, çünkü 'toplam fatura tutari'nda kullanılıyor.
         'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari'],
@@ -241,21 +241,22 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
       },
       'dueDate': {
         'strategies': ['findBelow'],
-        'kw': ['son odeme tarihi', 's o t'],
+        'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','son odeme tarıhı'],
         're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
         'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],
       },
       'readingValue': {
         'strategies': ['findRight', 'findBelow'],
         'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim','dusuk kademe','düşük kademe','düsük kademe'],
-        're': [RegExp(r'(\b\d{1,10}(?:[.,]?\s?\d{3})*\b)')], // Elektrikte ondalıklı olabilir
+        're': [RegExp(r'\b\d{1,10}(?:[.,]\s?\d{3})*\b')], // Elektrikte ondalıklı olabilir
         'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'bedel(tl)', // Parasal ifadeler
         'yüksek kademe', 'yuksek kademe', // Yanlış kademeyi engelle
         'gece', 'gunduz', 'puant', 'tek zaman', // Zaman dilimlerini engelle
         'endeks', 'indeks', 'fark', // Endeks tablosundaki diğer sütunları engelle
         'ortalama', // Ortalama tüketimi engelle
         'sayac no', 'abone no', 'tesisat no', 'fatura no', // Numaraları engelle
-        'kwh', 'gun say', 'gün say' // Birimleri ve gün sayısını engelle],
+        'kwh', 'gun say', 'gün say' ,'ödenecek tutar','tutar','fatura kodu','elektrik faturası','fatura',
+          'fatura otalama'// Birimleri ve gün sayısını engelle],
         ],
       },
     };
@@ -296,57 +297,43 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     }
 
     if (out['readingValue'] != null) {
+      // ANCHOR: Yakalanan değerdeki tüm boşlukları kaldır ve sonra birimleri temizle.
       out['readingValue'] = out['readingValue']!
+          .replaceAll(' ', '') // Önce tüm boşlukları temizle
           .replaceAll(RegExp(r'\s*(kwh|m3|m³)', caseSensitive: false), '')
           .trim();
     }
     return out;
   }
 
-  // BU YARDIMCI FONKSİYONU SINIFINIZA EKLEYİN VEYA GÜNCELLEYİN
-  DateTime? _parseDate(String dateStr) {
-    // Tarih ayraçlarını standart hale getir
-    final cleanDate = dateStr.replaceAll('/', '.').replaceAll('-', '.');
 
-    // Olası tarih formatlarını sırayla dene
-    final formats = [
-      DateFormat('dd.MM.yyyy'), // Örn: 26.05.2025
-      DateFormat('dd.MM.yy'),   // Örn: 26.05.25
-    ];
 
-    for (final format in formats) {
-      try {
-        return format.parseStrict(cleanDate);
-      } catch (_) {
-        // Format uyuşmazsa bir sonrakini dene
-      }
-    }
-    return null; // Hiçbir format uyuşmazsa null döndür
-  }
 
-  // Lütfen bu fonksiyonun tamamını kopyalayıp mevcut olanla değiştirin.
-  // Lütfen _findCandidate fonksiyonunun TAMAMINI bu güncellenmiş sürümle değiştirin.
-  // Lütfen _findCandidate fonksiyonunun TAMAMINI bu güncellenmiş sürümle değiştirin.
+  // Lütfen bu fonksiyonun tamamını projenizdeki mevcut fonksiyonla değiştirin.
+  /// Bu, _findCandidate fonksiyonunun nihai ve güncellenmiş versiyonudur.
+  /// Çok kelimeli negatif ifadeleri tanıyabilir ve belirsizlik sorunlarını çözer.
   _Candidate? _findCandidate(List<_LineInfo> elements, Map<String, dynamic> spec,
       double Function(Rect, Rect) scorer, String fieldKey) {
-    // ... fonksiyonun başındaki kw, negKw, res, lineFilter tanımlamaları aynı kalacak ...
     final kw = (spec['kw'] as List<String>).map(_norm).toList();
     final negKw = (spec['negKw'] as List<String>).map(_norm).toList();
     final res = spec['re'] as List<RegExp>;
     final lineFilter = spec['lineFilter'] as bool Function(String)?;
 
+    // POZİTİF etiketleri bul
     final labels = <_Candidate>[];
-    // ... etiket bulma ('labels' listesini doldurma) döngüsü aynı kalacak ...
     for (final phrase in kw) {
       final phraseWords = phrase.split(' ');
       for (int i = 0; i < elements.length; i++) {
         if (elements[i].normalizedText == phraseWords.first) {
           int matchedWords = 1;
           Rect combinedBox = elements[i].boundingBox;
-          for (int j = 1; j < phraseWords.length && (i + j) < elements.length; j++) {
+          for (int j = 1;
+          j < phraseWords.length && (i + j) < elements.length;
+          j++) {
             final nextElement = elements[i + j];
             if (nextElement.normalizedText == phraseWords[j] &&
-                (nextElement.boundingBox.left - combinedBox.right).abs() < nextElement.boundingBox.width) {
+                (nextElement.boundingBox.left - combinedBox.right).abs() <
+                    nextElement.boundingBox.width) {
               matchedWords++;
               combinedBox = combinedBox.expandToInclude(nextElement.boundingBox);
             } else {
@@ -354,7 +341,10 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
             }
           }
           if (matchedWords > 0) {
-            labels.add(_Candidate(value: phrase, boundingBox: combinedBox, score: -matchedWords.toDouble()));
+            labels.add(_Candidate(
+                value: phrase,
+                boundingBox: combinedBox,
+                score: -matchedWords.toDouble()));
           }
         }
       }
@@ -362,25 +352,90 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
 
     if (labels.isEmpty) return null;
 
-    // ... değer bulma ('vals' listesini doldurma) döngüsü aynı kalacak ...
+    // ANCHOR: GELİŞMİŞ NEGATİF FİLTRELEME MOTORU
+    // Bu bölüm, 'su tüketim bedeli' gibi çok kelimeli negatif ifadeleri tanır.
+    final negKwRects = <Rect>[];
+    for (final phrase in negKw) {
+      final phraseWords = phrase.split(' ');
+      // Eğer tek kelimelik bir negKw ise, tüm eşleşmeleri doğrudan ekle
+      if (phraseWords.length == 1) {
+        negKwRects.addAll(elements
+            .where((el) => el.normalizedText == phrase)
+            .map((el) => el.boundingBox));
+      }
+      // Eğer çok kelimelik bir negKw ise, ifadeyi bul ve kutusunu birleştir
+      else {
+        for (int i = 0; i < elements.length; i++) {
+          if (elements[i].normalizedText == phraseWords.first) {
+            int matchedWords = 1;
+            Rect combinedBox = elements[i].boundingBox;
+            for (int j = 1;
+            j < phraseWords.length && (i + j) < elements.length;
+            j++) {
+              final nextElement = elements[i + j];
+              if (nextElement.normalizedText == phraseWords[j] &&
+                  (nextElement.boundingBox.left - combinedBox.right).abs() <
+                      nextElement.boundingBox.width) {
+                matchedWords++;
+                combinedBox =
+                    combinedBox.expandToInclude(nextElement.boundingBox);
+              } else {
+                break;
+              }
+            }
+            if (matchedWords == phraseWords.length) {
+              negKwRects.add(combinedBox);
+            }
+          }
+        }
+      }
+    }
+
+    // Değerleri bul
     final vals = <_Candidate>[];
     for (final el in elements) {
       if (lineFilter != null && !lineFilter(el.text)) continue;
-      if (negKw.any((w) => el.normalizedText == w)) continue;
+
+      // Gelişmiş Negatif Filtre: Bu değer, bir negatif ifadenin "yasaklı bölgesinde" mi?
+      bool isNearNegativeKeyword = negKwRects.any((negRect) {
+        final isVerticallyAligned = (el.boundingBox.center.dy > negRect.top &&
+            el.boundingBox.center.dy < negRect.bottom);
+        final isToTheRight = el.boundingBox.left > negRect.right;
+        final isHorizontallyClose =
+            (el.boundingBox.left - negRect.right).abs() <
+                (el.boundingBox.width * 5);
+        return isVerticallyAligned && isToTheRight && isHorizontallyClose;
+      });
+
+      if (isNearNegativeKeyword) continue; // Eğer yasaklı bölgedeyse, bu değeri atla.
+
+      // Değeri regex ile doğrula ve sadece eşleşen kısmı al
       for (final r in res) {
-        if (r.hasMatch(el.text)) {
-          vals.add(_Candidate(value: el.text, boundingBox: el.boundingBox));
+        final cleanText = el.text.replaceAll(' ', '');
+        final match = r.firstMatch(cleanText);
+        if (match != null && match.group(0) != null) {
+          vals.add(
+              _Candidate(value: match.group(0)!, boundingBox: el.boundingBox));
+          break;
         }
       }
     }
 
     if (vals.isEmpty) return null;
 
-    // ... puanlama ('vals' içindeki skorları güncelleme) döngüsü aynı kalacak ...
+    // Puanlama ve geometrik sıralama
     for (final v in vals) {
       double minD = double.infinity;
       for (final l in labels) {
         final d = scorer(l.boundingBox, v.boundingBox) + (l.score * 10);
+
+        // ANCHOR: HATA AYIKLAMA İÇİN BU BLOK EKLENDİ
+        // Sadece 'readingValue' alanını işlerken skorları yazdır
+        if (fieldKey == 'readingValue') {
+          print(
+              '[DEBUG readingValue] Aday: "${v.value}", Çapa: "${l.value}", Skor: ${d.toStringAsFixed(2)}');
+        }
+
         if (d < minD) minD = d;
       }
       v.score = minD;
@@ -389,40 +444,37 @@ class _NewReadingScreenState extends State<NewReadingScreen> {
     vals.removeWhere((v) => v.score == double.infinity);
     if (vals.isEmpty) return null;
 
-    // Önce adayları geometrik skora göre sırala
     vals.sort((a, b) => a.score.compareTo(b.score));
 
-    // =================================================================
-    // YENİ GÜNCELLEME: 'dueDate' İÇİN ÖZEL SEÇİM MANTIĞI
-    // =================================================================
+    // dueDate için özel kronolojik sıralama mantığı
     if (fieldKey == 'dueDate' && vals.isNotEmpty) {
-      // Geometrik olarak en yakın adayları al (örneğin skoru 100'den küçük olanlar)
-      // Bu, alakasız yerlerdeki tarihlerin seçilmesini engeller.
-      final closeCandidates = vals.where((v) => v.score < 100).toList();
-
-      // Eğer hiç yakın aday yoksa veya sadece 1 tane varsa, en yakın olanı seçmek yeterlidir.
-      if (closeCandidates.length <= 1) {
-        return vals.first;
-      }
-
-      // Yakın adayları KRONOLOJİK OLARAK (en geçten en erkeğe) sırala
-      closeCandidates.sort((a, b) {
+      vals.sort((a, b) {
         DateTime? dateA = _parseDate(a.value);
         DateTime? dateB = _parseDate(b.value);
-        if (dateA == null) return 1;   // a'yı sona at
-        if (dateB == null) return -1;  // b'yi sona at
-        return dateB.compareTo(dateA); // b, a'dan sonra ise pozitif döner, b'yi öne alır.
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
+        return dateB.compareTo(dateA);
       });
-
-      // Kronolojik olarak en geç olan tarihi (listenin ilk elemanını) döndür.
-      return closeCandidates.first;
+      return vals.first;
     }
-    // =================================================================
 
-    // Diğer tüm alanlar için en yakın adayı döndür
     return vals.first;
   }
 
+  /// Tarih metinlerini standart DateTime nesnesine çevirir.
+  DateTime? _parseDate(String dateStr) {
+    final cleanDate = dateStr.replaceAll('/', '.').replaceAll('-', '.');
+    final formats = [
+      DateFormat('dd.MM.yyyy'),
+      DateFormat('dd.MM.yy'),
+    ];
+    for (final format in formats) {
+      try {
+        return format.parseStrict(cleanDate);
+      } catch (_) {}
+    }
+    return null;
+  }
 
 
   double Function(Rect, Rect) _getScorer(String name) {
