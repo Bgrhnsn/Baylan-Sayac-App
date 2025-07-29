@@ -8,7 +8,7 @@ Bu proje, elektrik ve su gibi faturaların takibini kolaylaştırmak amacıyla g
 
 ## 📱 Ekran Görüntüleri & Demo
 
-*(Buraya uygulamanızın ekran görüntülerini veya kısa bir GIF demosunu eklemeniz projenizi çok daha çekici hale getirecektir. Örneğin: Giriş ekranı, ana ekran grafiği, fatura tarama anı ve geçmiş kayıtlar listesi.)*
+
 
 | Giriş Ekranı | Ana Ekran | Fatura Tarama |
 | :---: | :---: | :---: |
@@ -101,15 +101,3 @@ Bu projeyi yerel makinenizde çalıştırmak için aşağıdaki adımları izley
     ```
 
 ---
-
-## 📄 Lisans
-
-Bu proje MIT Lisansı altında lisanslanmıştır. Daha fazla bilgi için `LICENSE` dosyasına bakın.
-
----
-
-## 📬 İletişim
-
-Berk Bilir - [E-POSTA_ADRESİNİZ] - [LİNKEDIN_PROFİLİNİZ]
-
-Proje Linki: [https://github.com/KULLANICI_ADINIZ/PROJE_ADI](https://github.com/KULLANICI_ADINIZ/PROJE_ADI)
