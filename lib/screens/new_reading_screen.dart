@@ -22,8 +22,16 @@ import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';//ocr
 import 'package:intl/intl.dart';//tarih ve sayıları farklı formata almak için
 import 'package:sayacfaturapp/models/meter_reading.dart';//model importu
+import 'package:sayacfaturapp/theme/custom_components.dart';//ortak tema
+import 'package:shared_preferences/shared_preferences.dart';//pop up mesajı için gerekli kütüphane
 
 // ———————————————————————————————————————————  Helpers
+class _ParseResult {
+  final Map<String, String> data;
+  final String? detectedProvider; // 'izsu', 'gediz' veya null olabilir
+
+  _ParseResult({required this.data, this.detectedProvider});
+}
 class _Candidate {//aranan bilgi olmaya adayları seçme
   _Candidate({required this.value, required this.boundingBox, this.score = 0});
   final String value;//metin
@@ -113,13 +121,14 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
   }
 
   // OCR ve documentscanner
+  // Lütfen mevcut _scanWithOcr fonksiyonunuzu silip,
+// yerine bu güncellenmiş versiyonu yapıştırın.
+
   Future<void> _scanWithOcr() async {
-    // Önce galeri iznini kontrol edip istiyoruz
     var status = await Permission.photos.status;
     if (status.isDenied) {
       status = await Permission.photos.request();
     }
-
     if (status.isPermanentlyDenied) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -128,7 +137,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       }
       return;
     }
-
     if (!status.isGranted) return;
 
     final scanner = DocumentScanner(options: DocumentScannerOptions(
@@ -148,13 +156,11 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
         return;
       }
 
-      // DOSYAYI GÜVENLİ BİR YERE KOPYALAMA AŞAMASI
       final srcPath = result.images.first;
       final tempDir = await getTemporaryDirectory();
       final dstPath = '${tempDir.path}/scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final copiedImg = await File(srcPath).copy(dstPath);
 
-      // Artık bize ait bir kopyası olduğu için state'i güncelleyebiliriz
       if (mounted) {
         setState(() {
           _scannedImageFile = copiedImg;
@@ -162,16 +168,35 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
         });
       }
 
-      // Geçici dosyalarla işimiz bitti, şimdi tarayıcıyı kapatabiliriz.
       await scanner.close();
 
-      // OCR ve diğer işlemler için artık kendi kopyaladığımız dosyayı kullanıyoruz
       final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final recText = await recognizer.processImage(InputImage.fromFile(copiedImg));
       await recognizer.close();
 
-      final data = _parse(recText);
+      // --- GÜNCELLEME BURADA BAŞLIYOR ---
+
+      // 1. Artık _parse'dan gelen "paketi" alıyoruz.
+      final parseResult = _parse(recText);
+      // 2. Paketin içinden veri "sözlüğünü" çıkarıyoruz.
+      final data = parseResult.data;
+
+      // 3. Paketin içindeki fatura tipine göre birimi otomatik seçiyoruz.
+      if (parseResult.detectedProvider == 'izsu') {
+        setState(() {
+          _selectedUnit = {'m³'}; // İZSU için m³ seç
+        });
+      } else if (parseResult.detectedProvider == 'gediz') {
+        setState(() {
+          _selectedUnit = {'kWh'}; // Gediz için kWh seç
+        });
+      }
+      // Varsayılan durumda bir şey yapmıyoruz, kullanıcının seçimine bırakıyoruz.
+
+      // 4. Alanları dolduruyoruz.
       _populateFields(data);
+
+      // --- GÜNCELLEME BURADA BİTİYOR ---
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -181,6 +206,14 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
           backgroundColor: data.isEmpty ? Colors.orange : Colors.green,
         ));
       }
+    } on PlatformException catch (e) {
+      if (e.message?.toLowerCase().contains('cancelled') ?? false) {
+        print('Kullanıcı tarama işlemini iptal etti.');
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bir platform hatası oluştu: $e')));
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
@@ -188,6 +221,27 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     } finally {
       if (mounted) setState(() => _isScanning = false);
     }
+  }
+  Future<void> _onCameraPressed() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Cihaz hafızasından 'hasSeenScanTips' değerini oku. Eğer yoksa 'false' kabul et.
+    final hasSeenTips = prefs.getBool('hasSeenScanTips') ?? false;
+
+    if (!hasSeenTips && mounted) {
+      // Eğer kullanıcı ipuçlarını daha önce görmemişse, dialogu göster.
+      _showScanTipsDialog(
+        onContinue: () async {
+          // Kullanıcı "Anladım, Tara" butonuna basınca,
+          // ipuçlarını gördüğünü hafızaya kaydet ve taramayı başlat.
+          await prefs.setBool('hasSeenScanTips', true);
+          _scanWithOcr();
+        },
+      );
+    } else {
+      // Kullanıcı ipuçlarını zaten görmüş, doğrudan taramayı başlat.
+      _scanWithOcr();
+    }
+
   }
 
   // ————————————————————————————————  Normalization & Parsing (Bu kısım değişmedi)
@@ -203,122 +257,54 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
-  Map<String, String> _parse(RecognizedText rec) {
+  // Bu, _parse fonksiyonunun GÜNCELLENMİŞ halidir.
+
+  _ParseResult _parse(RecognizedText rec) {
     final elements = rec.blocks
         .expand((b) => b.lines
         .expand((l) => l.elements.map((e) => _LineInfo(e.text, _norm(e.text), e.boundingBox))))
         .toList();
-//yukarı metin temizleme
 
-    // PROFİL 1: İZSU SU FATURASI KURALLARI
+    // --- (izsuSpecs ve gedizSpecs tanımlarınız burada aynı kalacak) ---
     final izsuSpecs = {
-      'installationId': {
-        'strategies': ['findRight', 'findBelow'],
-        'kw': ['sayaç','sayac','sayaç no','sayac no'],
-        're': [RegExp(r'(\b\d{7,14}\b)')],
-        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura', 'musteri','abone'],
-      },
-      'invoiceAmount': {
-        'strategies': ['findBelow', 'findRight'],
-        'kw': ['odenecek toplam tutar'],
-        're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
-        'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari', 'ara toplam',
-          'izsu fatura toplami', 'toplam', 'su tuketim'],
-        'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
-      },
-      'dueDate': {
-        'strategies': ['findRight','findBelow'],
-        'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','SON ÖDEME TARİHİ','SON ODEME TARİHİ','SON ODEME TARIHI'],
-        're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
-        'negKw': ['okuma','OKUMA','ilk'],
-      },
-      'readingValue': {
-        'strategies': ['findRight'],
-        'kw': ['tuketim'],
-        're': [RegExp(r'^\d+$')],
-        'negKw': [
-          'su bedeli',
-          'tüketim gün say',
-          'ilk endeks',
-          'son endeks',
-          'su birim fiyat',
-          'atık su birim fiyat',
-          'bölge kodu',
-          'tutar',
-          'toplam',
-          'kdv',
-          'kademe', // '1 Kademe', '2 Kademe' gibi ifadeleri engeller
-          'endeks',
-          'oran'
-        ],
-      },
+      'installationId': {'strategies': ['findRight', 'findBelow'], 'kw': ['sayaç','sayac','sayaç no','sayac no'], 're': [RegExp(r'(\b\d{7,14}\b)')], 'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura', 'musteri','abone'],},
+      'invoiceAmount': {'strategies': ['findBelow', 'findRight'], 'kw': ['odenecek toplam tutar'], 're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')], 'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari', 'ara toplam', 'izsu fatura toplami', 'toplam', 'su tuketim'], 'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),},
+      'dueDate': {'strategies': ['findRight','findBelow'], 'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','SON ÖDEME TARİHİ','SON ODEME TARİHİ','SON ODEME TARIHI'], 're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')], 'negKw': ['okuma','OKUMA','ilk'],},
+      'readingValue': {'strategies': ['findRight'], 'kw': ['tuketim'], 're': [RegExp(r'^\d+$')], 'negKw': ['su bedeli', 'tüketim gün say', 'ilk endeks', 'son endeks', 'su birim fiyat', 'atık su birim fiyat', 'bölge kodu', 'tutar', 'toplam', 'kdv', 'kademe', 'endeks', 'oran'],},
     };
-
-    // PROFİL 2: GEDİZ ELEKTRİK FATURASI KURALLARI
     final gedizSpecs = {
-      'installationId': {
-        'strategies': ['findBelow'],
-        'kw': ['tekil kod/tesisat no','tesisat no', 'tekil kod','tekil','tesisat'],
-        're': [RegExp(r'(\b\d{7,14}\b)')],
-        'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura','seri','sozlesme hesap','sozleşme','sözleşme'],
-      },
-      'invoiceAmount': {
-        'strategies': ['findBelow'],
-        'kw': ['odenecek tutar', 'toplam fatura tutari','ödenecek tutar','tutar'],
-        're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')],
-        'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari'],
-        'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),
-      },
-      'dueDate': {
-        'strategies': ['findBelow'],
-        'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','son odeme tarıhı'],
-        're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')],
-        'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],
-      },
-      'readingValue': {
-        'strategies': ['findRight'],
-        'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim'],
-        're': [RegExp(r'\b\d{1,3}(?:\.\d{3})*,\d{3}\b')], // Elektrikte ondalıklı olabilir
-        'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'bedel(tl)', // Parasal ifadeler
-          'yüksek kademe', 'yuksek kademe', // Yanlış kademeyi engelle
-          'gece', 'gunduz', 'puant', 'tek zaman', // Zaman dilimlerini engelle
-          'endeks', 'indeks', 'fark', // Endeks tablosundaki diğer sütunları engelle
-          'ortalama', // Ortalama tüketimi engelle
-          'sayac no', 'abone no', 'tesisat no', 'fatura no', // Numaraları engelle
-          'kwh', 'gun say', 'gün say' ,'ödenecek tutar','tutar','fatura kodu','elektrik faturası','fatura',
-          'fatura otalama'// Birimleri ve gün sayısını engelle],
-        ],
-      },
+      'installationId': {'strategies': ['findBelow'], 'kw': ['tekil kod/tesisat no','tesisat no', 'tekil kod','tekil','tesisat'], 're': [RegExp(r'(\b\d{7,14}\b)')], 'negKw': ['vergi', 'dosya', 'tc kimlik', 'fatura','seri','sozlesme hesap','sozleşme','sözleşme'],},
+      'invoiceAmount': {'strategies': ['findBelow'], 'kw': ['odenecek tutar', 'toplam fatura tutari','ödenecek tutar','tutar'], 're': [RegExp(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})')], 'negKw': ['kdv', 'yuvarlama', 'bedel', 'taksit', 'donem tutari'], 'lineFilter': (String raw) => RegExp(r'[.,]\d{2}\b').hasMatch(raw),},
+      'dueDate': {'strategies': ['findBelow'], 'kw': ['son odeme tarihi', 's o t','son ödeme tarihi','son odeme tarıhı'], 're': [RegExp(r'(\d{2}[./-]\d{2}[./-]\d{2,4})')], 'negKw': ['fatura tarihi', 'okuma tarihi', 'ilk okuma', 'son okuma'],},
+      'readingValue': {'strategies': ['findRight'], 'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim'], 're': [RegExp(r'\b\d{1,3}(?:\.\d{3})*,\d{3}\b')], 'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'bedel(tl)', 'yüksek kademe', 'yuksek kademe', 'gece', 'gunduz', 'puant', 'tek zaman', 'endeks', 'indeks', 'fark', 'ortalama', 'sayac no', 'abone no', 'tesisat no', 'fatura no', 'kwh', 'gun say', 'gün say' ,'ödenecek tutar','tutar','fatura kodu','elektrik faturası','fatura', 'fatura otalama'],},
     };
+    // --------------------------------------------------------------------
 
-    // =================================================================
-    // ADIM 2: FATURAYI TANI VE DOĞRU PROFİLİ SEÇ
-    // =================================================================
     final fullText = _norm(rec.text);
     Map<String, dynamic> specs;
+    // YENİ: Tespit edilen fatura tipini saklamak için bir değişken
+    String? detectedProvider;
 
     if (fullText.contains('izsu')) {
       print("İZSU Fatura Profili Seçildi.");
       specs = izsuSpecs;
+      detectedProvider = 'izsu'; // <-- Tipi değişkene ata
     } else if (fullText.contains('gediz')) {
       print("Gediz Fatura Profili Seçildi.");
       specs = gedizSpecs;
+      detectedProvider = 'gediz'; // <-- Tipi değişkene ata
     } else {
       print("Varsayılan (Gediz) Fatura Profili Seçildi.");
-      specs = gedizSpecs; // Veya genel bir varsayılan profil
+      specs = gedizSpecs;
+      detectedProvider = null; // <-- Bilinmeyen tip için null ata
     }
 
-    // =================================================================
-    // ADIM 3: SEÇİLEN PROFİL İLE AYRIŞTIRMA YAP
-    // =================================================================
     final out = <String, String>{};
-
     for (final entry in specs.entries) {
       final key = entry.key;
       final spec = entry.value as Map<String, dynamic>;
       final strategies = spec['strategies'] as List<String>;
       _Candidate? best;
-
       for (final strat in strategies) {
         final cand = _findCandidate(elements, spec, _getScorer(strat), key);
         if (cand != null && (best == null || cand.score < best.score)) best = cand;
@@ -327,13 +313,14 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     }
 
     if (out['readingValue'] != null) {
-      // ANCHOR: Yakalanan değerdeki tüm boşlukları kaldır ve sonra birimleri temizle.
       out['readingValue'] = out['readingValue']!
-          .replaceAll(' ', '') // Önce tüm boşlukları temizle
+          .replaceAll(' ', '')
           .replaceAll(RegExp(r'\s*(kwh|m3|m³)', caseSensitive: false), '')
           .trim();
     }
-    return out;
+
+    // YENİ: Sonuçları ve tespit edilen fatura tipini birlikte döndür
+    return _ParseResult(data: out, detectedProvider: detectedProvider);
   }
 
   _Candidate? _findCandidate(List<_LineInfo> elements, Map<String, dynamic> spec,
@@ -546,6 +533,8 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
   }
 
   // ───────────────────────────── UI HELPERS & POPULATE
+
+
   void _populateFields(Map<String, String> d) {
     setState(() {
       if (d['installationId'] != null) _installationIdCtrl.text = d['installationId']!;
@@ -737,21 +726,50 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
 
   // ────────────────────────────── UI ──────────────────────────────── //
 
-  void _showScanTipsDialog() {
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('Daha İyi Tarama İçin İpuçları'),
-      content: const Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('• Faturayı düz bir yüzeye koyun'),
-          Text('• İyi ışık altında fotoğraf çekin'),
-          Text('• Faturanın tamamı görünür olsun'),
-          Text('• Buruşukluklardan kaçının'),
-          Text('• Kamerayı sabit tutun'),
-          Text('• Gerekirse birkaç kez deneyin'),
-        ],
-      ),
-      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Anladım'))],
-    ),
+  void _showScanTipsDialog({VoidCallback? onContinue}) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.lightbulb_outline_rounded, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              const Text('Tarama İpuçları'),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('En iyi sonuçlar için:', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 12),
+              Text('• Faturayı düz bir yüzeye koyun.'),
+              SizedBox(height: 4),
+              Text('• Parlama ve gölgelerden kaçının.'),
+              SizedBox(height: 4),
+              Text('• Faturanın tamamı kameraya sığsın.'),
+              SizedBox(height: 4),
+              Text('• Kamerayı sabit tutun.'),
+            ],
+          ),
+          actions: [
+            // Eğer onContinue metodu verilmişse, "Anladım, Tara" butonu gösterilir.
+            // Verilmemişse, sadece "Anladım" butonu gösterilir.
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (onContinue != null) {
+                  onContinue();
+                }
+              },
+              child: Text(onContinue != null ? 'Anladım, Tara' : 'Anladım'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -885,6 +903,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? 'Okumayı Düzenle' : 'Yeni Sayaç Okuma'),
@@ -892,12 +911,14 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
           if (_isScanning)
             const Padding(padding: EdgeInsets.all(16.0), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white)))
           else ...[
-            IconButton(icon: const Icon(Icons.camera_alt_outlined), tooltip: 'Faturayı Tara', onPressed: _scanWithOcr),
+            IconButton(
+                icon: const Icon(Icons.camera_alt_outlined),
+                tooltip: 'Faturayı Tara',
+                onPressed: _scanWithOcr, ),
             PopupMenuButton<String>(
               onSelected: (value) {
                 switch (value) {
-                  case 'manual_scan': _showManualInputDialog(); break;
-                  case 'scan_tips': _showScanTipsDialog(); break;
+                  case 'scan_tips':_showScanTipsDialog(); break;
                   case 'show_debug':
                     if (_lastOcrResultText != null) {
                       _showOcrDebugDialog(_lastOcrResultText!);
@@ -945,13 +966,13 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
               // GÜNCELLENDİ: Formun en başına fatura görseli önizlemesi eklendi.
               _buildInvoicePreview(),
 
-              TextFormField(controller: _meterNameCtrl, decoration: const InputDecoration(labelText: 'Sayaç Adı (örn: Ev Elektrik)', prefixIcon: Icon(Icons.label_important_outline), border: OutlineInputBorder())),
+              TextFormField(controller: _meterNameCtrl, decoration: const InputDecoration(labelText: 'Sayaç Adı (örn: Ev Elektrik)', prefixIcon: Icon(Icons.label_important_outline))),
               const SizedBox(height: 16),
-              TextFormField(controller: _installationIdCtrl, decoration: const InputDecoration(labelText: 'Tesisat Numarası', prefixIcon: Icon(Icons.confirmation_number_outlined), border: OutlineInputBorder()), validator: (v) => v!.trim().isEmpty ? 'Tesisat numarası zorunludur' : null),
+              TextFormField(controller: _installationIdCtrl, decoration: const InputDecoration(labelText: 'Tesisat Numarası', prefixIcon: Icon(Icons.confirmation_number_outlined)), validator: (v) => v!.trim().isEmpty ? 'Tesisat numarası zorunludur' : null),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _valueCtrl,
-                decoration: const InputDecoration(labelText: 'Okuma Değeri', prefixIcon: Icon(Icons.speed_outlined), border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Okuma Değeri', prefixIcon: Icon(Icons.speed_outlined)),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Okuma değeri girin';
@@ -961,6 +982,12 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
               ),
               const SizedBox(height: 16),
               SegmentedButton<String>(
+                style: SegmentedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.surface,
+                  foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7),
+                  selectedForegroundColor: theme.colorScheme.onPrimary,
+                  selectedBackgroundColor: theme.colorScheme.primary,
+                ),
                 segments: const [
                   ButtonSegment(value: 'kWh', label: Text('kWh'), icon: Icon(Icons.electric_bolt)),
                   ButtonSegment(value: 'm³', label: Text('m³'), icon: Icon(Icons.water_drop)),
@@ -969,23 +996,23 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
                 onSelectionChanged: (s) => setState(() => _selectedUnit = s),
               ),
               const SizedBox(height: 16),
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)),
-                leading: const Icon(Icons.today),
-                title: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Okuma Zamanı', style: Theme.of(context).textTheme.bodySmall),
-                    Text(DateFormat('dd MMMM HH:mm', 'tr_TR').format(_pickedTime), style: Theme.of(context).textTheme.titleMedium),
-                  ],
+              AppStyledCard(
+                child: ListTile(
+                  leading: const Icon(Icons.today_outlined),
+                  title: Text('Okuma Zamanı', style: theme.textTheme.bodyMedium),
+                  subtitle: Text(
+                      DateFormat('dd MMMM yyyy, HH:mm', 'tr_TR').format(_pickedTime),
+                      style: theme.textTheme.titleMedium
+                  ),
+                  trailing: const Icon(Icons.edit_calendar_outlined),
+                  onTap: () async {
+                    final d = await showDatePicker(context: context, initialDate: _pickedTime, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                    if (d == null) return;
+                    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_pickedTime));
+                    if (t == null) return;
+                    setState(() => _pickedTime = DateTime(d.year, d.month, d.day, t.hour, t.minute));
+                  },
                 ),
-                trailing: const Icon(Icons.edit_calendar),
-                onTap: () async {
-                  final d = await showDatePicker(context: context, initialDate: _pickedTime, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR'));
-                  if (d == null) return;
-                  final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_pickedTime));
-                  if (t == null) return;
-                  setState(() => _pickedTime = DateTime(d.year, d.month, d.day, t.hour, t.minute));
-                },
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -1003,22 +1030,30 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
               const SizedBox(height: 16),
               TextFormField(controller: _invoiceAmountCtrl, decoration: const InputDecoration(labelText: 'Fatura Tutarı', prefixIcon: Icon(Icons.receipt_long_outlined), border: OutlineInputBorder(), suffixText: 'TL'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
               const SizedBox(height: 16),
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)),
-                leading: const Icon(Icons.event_busy),
-                title: Text(_pickedDueDate == null ? 'Son Ödeme Tarihi Seçin' : DateFormat('dd MMMM yyyy', 'tr_TR').format(_pickedDueDate!)),
-                trailing: _pickedDueDate == null ? const Icon(Icons.calendar_month) : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _pickedDueDate = null)),
-                onTap: () async {
-                  final d = await showDatePicker(context: context, initialDate: _pickedDueDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)), locale: const Locale('tr', 'TR'));
-                  if (d == null) return;
-                  setState(() => _pickedDueDate = d);
-                },
+              AppStyledCard(
+                child: ListTile(
+                  leading: const Icon(Icons.today_outlined),
+                  title: Text('Okuma Zamanı', style: theme.textTheme.bodyMedium),
+                  subtitle: Text(
+                      DateFormat('dd MMMM yyyy, HH:mm', 'tr_TR').format(_pickedTime),
+                      style: theme.textTheme.titleMedium
+                  ),
+                  trailing: const Icon(Icons.edit_calendar_outlined),
+                  onTap: () async {
+                    final d = await showDatePicker(context: context, initialDate: _pickedTime, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                    if (d == null) return;
+                    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_pickedTime));
+                    if (t == null) return;
+                    setState(() => _pickedTime = DateTime(d.year, d.month, d.day, t.hour, t.minute));
+                  },
+                ),
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: _isSaving ? null : _saveOrUpdate,
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12), backgroundColor: _isSaving ? Colors.grey : Theme.of(context).primaryColor, foregroundColor: Colors.white),
-                icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(_isEdit ? Icons.check : Icons.save),
+                icon: _isSaving
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Icon(_isEdit ? Icons.check_circle_outline : Icons.save_outlined),
                 label: Text(_isEdit ? 'Güncelle' : 'Kaydet'),
               ),
             ],
