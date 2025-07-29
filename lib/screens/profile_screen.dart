@@ -19,7 +19,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await FirebaseAuth.instance.signOut();
     if (mounted) {
       // Tüm geçmişi temizleyerek login ekranına yönlendir
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil('/LoginScreen', (route) => false);
     }
   }
 
@@ -121,6 +121,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // YENİ: Arka plan rengi diğer ekranlarla uyumlu hale getirildi.
+      backgroundColor: const Color(0xFFF5F5F7),
       body: StreamBuilder<QuerySnapshot>(
         // Kullanıcının istatistiklerini almak için verileri dinle
         stream: FirebaseFirestore.instance
@@ -148,25 +150,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // 2. İstatistik Kartları
               Row(
                 children: [
-                  Expanded(child: _StatCard(count: totalReadings.toString(), label: 'Toplam Kayıt', icon: Icons.receipt_long, color: Colors.blue)),
+                  Expanded(child: _StatCard(count: totalReadings.toString(), label: 'Toplam Kayıt', icon: Icons.receipt_long, color: const Color(0xFF007AFF))),
                   const SizedBox(width: 16),
-                  Expanded(child: _StatCard(count: uniqueMeters.toString(), label: 'Kayıtlı Sayaç', icon: Icons.electrical_services, color: Colors.green)),
+                  Expanded(child: _StatCard(count: uniqueMeters.toString(), label: 'Kayıtlı Sayaç', icon: Icons.electrical_services, color: const Color(0xFF30D158))),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // 3. Hesap Yönetimi
               _buildSectionTitle('Hesap Yönetimi'),
               _ActionTile(title: 'Şifremi Değiştir', icon: Icons.lock_outline, onTap: _resetPassword),
               _ActionTile(title: 'Çıkış Yap', icon: Icons.logout, onTap: _signOut),
-              const SizedBox(height: 16),
 
               // 4. Tehlikeli Alan
               _buildSectionTitle('Tehlikeli Alan'),
               _ActionTile(
                 title: 'Hesabımı Sil',
                 icon: Icons.delete_forever_outlined,
-                color: Colors.red,
+                color: const Color(0xFFFF3B30),
                 onTap: _showDeleteConfirmation,
               ),
             ],
@@ -176,60 +177,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// YENİ: Modern arayüze uygun kullanıcı bilgi kartı.
   Widget _buildUserInfoCard() {
     String initials = _currentUser?.displayName?.isNotEmpty == true
         ? _currentUser!.displayName!.split(' ').map((e) => e[0]).take(2).join().toUpperCase()
         : (_currentUser?.email?[0] ?? '?').toUpperCase();
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: Theme.of(context).primaryColor,
-              child: Text(initials, style: const TextStyle(fontSize: 24, color: Colors.white)),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 4))],
+        border: Border.all(color: const Color(0xFFE5E5EA).withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: const Color(0xFF007AFF),
+            child: Text(initials, style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _currentUser?.displayName ?? 'Kullanıcı Adı',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _currentUser?.email ?? 'E-posta adresi bulunamadı.',
+                  style: const TextStyle(fontSize: 14, color: Color(0xFF86868B)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _currentUser?.displayName ?? 'Kullanıcı Adı',
-                    style: Theme.of(context).textTheme.titleLarge,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _currentUser?.email ?? 'E-posta adresi bulunamadı.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
+  /// YENİ: Modern arayüze uygun bölüm başlığı.
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 8.0, top: 16.0, bottom: 8.0),
+      padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12),
+        style: const TextStyle(
+          color: Color(0xFF86868B),
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
 }
 
-/// İstatistikleri gösteren küçük kart widget'ı.
+/// YENİ: Modern arayüze uygun istatistik kartı.
 class _StatCard extends StatelessWidget {
   const _StatCard({required this.count, required this.label, required this.icon, required this.color});
   final String count;
@@ -239,26 +249,27 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 12),
-            Text(count, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-            Text(label, style: const TextStyle(color: Colors.grey)),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 12),
+          Text(count, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1D1D1F))),
+          Text(label, style: const TextStyle(color: Color(0xFF86868B), fontWeight: FontWeight.w500)),
+        ],
       ),
     );
   }
 }
 
-/// Eylem listesi elemanı widget'ı.
+/// YENİ: Modern arayüze uygun eylem listesi elemanı.
 class _ActionTile extends StatelessWidget {
   const _ActionTile({required this.title, required this.icon, this.color, required this.onTap});
   final String title;
@@ -268,13 +279,29 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final titleColor = color ?? const Color(0xFF1D1D1F);
+    final iconColor = color ?? const Color(0xFF86868B);
+
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: Icon(icon, color: color ?? Theme.of(context).iconTheme.color),
-        title: Text(title, style: TextStyle(color: color)),
-        trailing: const Icon(Icons.chevron_right),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: iconColor),
+              const SizedBox(width: 16),
+              Expanded(child: Text(title, style: TextStyle(color: titleColor, fontWeight: FontWeight.w500, fontSize: 16))),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
       ),
     );
   }

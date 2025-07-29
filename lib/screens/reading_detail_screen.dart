@@ -6,6 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+import 'package:sayacfaturapp/screens/photo_viewer_screen.dart'; // YENİ: Oluşturduğumuz ekran
+import 'package:flutter/gestures.dart'; // DEĞİŞİKLİK GEREKMEYEBİLİR AMA OLMALI
+
+
 // Düzenleme ekranını import ediyoruz.
 import 'package:sayacfaturapp/screens/new_reading_screen.dart';
 
@@ -239,42 +243,59 @@ class ReadingDetailScreen extends StatelessWidget {
     );
   }
 
-  // YENİ: Fatura görseli kartını oluşturan yardımcı widget.
+  // fatura görselini ayrı ekranda göster
   Widget _buildInvoiceImageCard(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias, // Görselin kartın köşelerine taşmasını engeller
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text("Fatura Görseli", style: Theme.of(context).textTheme.titleLarge),
+            child: Text("Fatura Görseli",
+                style: Theme.of(context).textTheme.titleLarge),
           ),
-          Image.network(
-            reading.invoiceImageUrl!,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return const SizedBox(
-                height: 200,
-                child: Center(child: CircularProgressIndicator()),
+          // YENİ: GestureDetector ile tıklama özelliği ekliyoruz.
+          GestureDetector(
+            onTap: () {
+              // Tıklandığında yeni PhotoViewerScreen ekranına yönlendiriyoruz.
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      PhotoViewerScreen(imageUrl: reading.invoiceImageUrl!),
+                ),
               );
             },
-            errorBuilder: (context, error, stackTrace) {
-              return const SizedBox(
-                height: 200,
-                child: Center(child: Text("Görsel yüklenemedi.")),
-              );
-            },
+            child: Hero(
+              // YENİ: Güzel bir geçiş animasyonu için Hero widget'ı ekledik.
+              tag: reading.invoiceImageUrl!, // Benzersiz bir tag
+              child: Image.network(
+                reading.invoiceImageUrl!,
+                height: 200, // Yüksekliği sınırlayarak önizleme görünümü sağlıyoruz.
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return const SizedBox(
+                    height: 200,
+                    child: Center(child: Text("Görsel yüklenemedi.")),
+                  );
+                },
+              ),
+            ),
           ),
         ],
       ),
     );
   }
-
   // Detay kartlarını oluşturan yardımcı widget
   Widget _buildDetailCard(BuildContext context, {required String title, required List<Widget> children}) {
     return Card(

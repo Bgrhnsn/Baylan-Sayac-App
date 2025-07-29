@@ -33,7 +33,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // GÜNCELLEME: Parola gücü için renkleri temadan alan bir yardımcı fonksiyon
   Color _getStrengthColor(String strength) {
     switch (strength) {
       case 'Güçlü':
@@ -70,6 +69,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  /// GÜNCELLEME: Kayıt sonrası geri bildirim ve yönlendirme eklendi.
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     if (!_acceptedTerms) {
@@ -79,12 +79,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
+      // 1. Kullanıcıyı Firebase Auth ile oluştur.
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+      // 2. Kullanıcının adını güncelle.
       await credential.user!.updateDisplayName(_nameController.text.trim());
-      // GÜNCELLEME: Manuel yönlendirme kaldırıldı. AuthWrapper bunu otomatik yapacak.
+
+      // 3. ÖNEMLİ: Kullanıcıyı hemen çıkış yaptırarak Auth sarmalayıcısının
+      // ana ekrana yönlendirmesini engelle ve manuel giriş yapmasını sağla.
+      await FirebaseAuth.instance.signOut();
+
+      // 4. Başarı mesajı göster ve giriş ekranına dön.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hesabınız başarıyla oluşturuldu! Lütfen giriş yapın.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Kayıt ekranını kapatarak bir önceki ekrana (Giriş) dön.
+        Navigator.of(context).pop();
+      }
+
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _firebaseErrorToTR(e.code));
     } finally {
@@ -106,7 +124,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         idToken: googleAuth.idToken,
       );
       await FirebaseAuth.instance.signInWithCredential(credential);
-      // GÜNCELLEME: Manuel yönlendirme kaldırıldı. AuthWrapper bunu otomatik yapacak.
+      // Google ile giriş yapıldığında AuthWrapper ana ekrana yönlendirecektir.
+      // Bu yüzden burada manuel yönlendirme yok.
     } catch (e) {
       if (mounted) setState(() => _errorMessage = 'Google ile giriş başarısız oldu.');
     } finally {
@@ -116,12 +135,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Temadan renkleri ve stilleri alıyoruz.
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      // AppBar ekleyerek geri dönme olanağı sağlıyoruz
       appBar: AppBar(
         title: const Text('Yeni Hesap Oluştur'),
       ),
@@ -194,7 +211,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (_strengthLabel.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0, left: 12.0),
-                        // GÜNCELLEME: Parola gücü renkleri artık hard-coded değil.
                         child: Text(
                           'Parola Gücü: $_strengthLabel',
                           style: textTheme.bodyMedium?.copyWith(
@@ -218,7 +234,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // GÜNCELLEME: Checkbox stili artık temadan (CheckboxTheme) geliyor.
                     CheckboxListTile(
                       value: _acceptedTerms,
                       onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
@@ -240,7 +255,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 16.0),
                         child: Center(
-                          // GÜNCELLEME: Hata mesajı stili temadan (colorScheme.error) geliyor.
                           child: Text(
                             _errorMessage!,
                             style: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600),
@@ -252,12 +266,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 24),
                     const Row(
                       children: [
-                        Expanded(child: Divider()), // Stil temadan (DividerTheme) geliyor
+                        Expanded(child: Divider()),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 8.0),
                           child: Text('veya', style: TextStyle(color: Colors.grey)),
                         ),
-                        Expanded(child: Divider()), // Stil temadan (DividerTheme) geliyor
+                        Expanded(child: Divider()),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -273,7 +287,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: TextButton(
                         onPressed: _isLoading ? null : () => Navigator.pop(context),
                         child: const Text('Zaten hesabın var mı? Giriş Yap'),
-                        // GÜNCELLEME: Stil, merkezi temadan (TextButtonTheme) geliyor.
                       ),
                     ),
                   ],

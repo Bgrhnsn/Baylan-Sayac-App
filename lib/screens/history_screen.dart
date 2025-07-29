@@ -221,45 +221,52 @@ class _HistoryScreenState extends State<HistoryScreen> {
             backgroundColor: iconColor.withOpacity(0.15),
             child: Icon(iconData, color: iconColor),
           ),
-          // GÜNCELLEME: Metin stilleri temadan alınıyor.
           title: Text(
             reading.meterName ?? reading.installationId,
             style: theme.textTheme.titleMedium,
           ),
-          subtitle: Text(
-            '${reading.readingValue} ${reading.unit ?? ''} | ${DateFormat('dd MMM yyyy, HH:mm', 'tr_TR').format(reading.readingTime)}',
-            style: theme.textTheme.bodyMedium,
-          ),
-          trailing: SizedBox(
-            width: 100,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (reading.invoiceAmount != null)
-                  Expanded(
-                    child: Text(
-                      NumberFormat.currency(locale: 'tr_TR', symbol: '₺').format(reading.invoiceAmount),
-                      style: theme.textTheme.titleMedium,
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. Satır: Orijinal subtitle metni
+              Text(
+                '${reading.readingValue} ${reading.unit ?? ''} | ${DateFormat('dd MMM yyyy', 'tr_TR').format(reading.readingTime)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+
+              // GÜNCELLEME: Fatura tutarı Chip'i buradan kaldırıldı.
+              // Row widget'ı artık sadece fatura ikonu için gerekli.
+              if (reading.invoiceImageUrl != null) ...[
+                const SizedBox(height: 8), // Metin ile Chip arasına boşluk
+                Chip(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.6),
+                  avatar: Icon(
+                    Icons.receipt_long_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSecondaryContainer,
                   ),
-                if (reading.invoiceImageUrl != null) ...[
-                  const SizedBox(width: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      reading.invoiceImageUrl!,
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 24, color: Colors.grey),
-                    ),
+                  label: Text(
+                    'Fatura',
+                    style: theme.textTheme.bodySmall,
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
+
+          // YENİ: trailing alanı fatura tutarını göstermek için eklendi.
+          trailing: reading.invoiceAmount != null
+              ? Text(
+            NumberFormat.currency(locale: 'tr_TR', symbol: '₺')
+                .format(reading.invoiceAmount!),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          )
+              : null,
+
           onTap: () {
             Navigator.of(context).push(MaterialPageRoute(
               builder: (context) => ReadingDetailScreen(reading: reading),

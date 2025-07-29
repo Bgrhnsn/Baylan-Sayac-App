@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 // YENİ: Firebase App Check paketini import ediyoruz.
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:sayacfaturapp/screens/login_screen.dart';
 
 // Proje importları
 import 'firebase_options.dart';
@@ -76,11 +77,14 @@ class MyApp extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
             backgroundColor: Colors.indigo,
             foregroundColor: Colors.white,
+
           ),
         ),
       ),
+        routes: {
+          '/login': (context) => const LoginScreen(),},
 
-      localizationsDelegates: const [
+          localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
