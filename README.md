@@ -10,9 +10,9 @@ Bu proje, elektrik ve su gibi faturaların takibini kolaylaştırmak amacıyla g
 
 
 
-| Giriş Ekranı | Ana Ekran | Fatura Tarama |
-| :---: | :---: | :---: |
-| <img src="" width="200"/> | <img src="" width="200"/> | <img src="" width="200"/> |
+|                      Giriş Ekranı                      |                       Ana Ekran                       |                    Fatura Tarama                     |
+|:------------------------------------------------------:|:-----------------------------------------------------:|:----------------------------------------------------:|
+| <img src="assets/readme/loginscreen.png" width="200"/> | <img src="assets/readme/homescreen.png" width="200"/> | <img src="assets/readme/addscreen.png" width="200"/> |
 
 ---
 
