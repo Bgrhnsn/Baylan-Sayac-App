@@ -2,15 +2,19 @@
 // ===========================================================
 // yeni fatura ekleme alanı google ml kit bağlandı
 // ml kit ile algılanan metin regex kurallarından geçerek istediğimiz verileri almaya çalışır
-//
+// GÜNCELLEME: Fatura görseli Firebase Storage'a kaydediliyor ve önizlemesi gösteriliyor.
 // ===========================================================
 
 import 'dart:io';//dosya işlemleri
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import 'dart:math' as math;//matematiksel işlemler
 
 import 'package:cloud_firestore/cloud_firestore.dart';//firebase veritabanına veri kaydetmek
-import 'package:firebase_auth/firebase_auth.dart';//kimlik doğrulama için
 import 'package:flutter/material.dart';//temel görsel bileşenler
+import 'package:firebase_auth/firebase_auth.dart';//kimlik doğrulama için
+import 'package:firebase_storage/firebase_storage.dart'; // Görsel kaydı için eklendi.
 import 'package:flutter/services.dart'; // temel servislere erişim hata ayıklama ekranı için
 import 'package:geocoding/geocoding.dart';//lokasyon
 import 'package:geolocator/geolocator.dart';//lokasyon
@@ -34,7 +38,7 @@ class _LineInfo {//ocr dan gelen her bir metin parçasını , orjinal ve temizle
 }
 
 double _toDouble(String s) =>//12548,2655 -> 12548.2655
-    double.tryParse(s.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
+double.tryParse(s.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
 
 //
 class NewReadingScreen extends StatefulWidget {
@@ -54,6 +58,8 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
   final _invoiceAmountCtrl = TextEditingController();
 
   // state
+  File? _scannedImageFile; // Cihazda taranan ve henüz yüklenmemiş görsel dosyası.
+  String? _existingInvoiceImageUrl; // Düzenleme modunda, Firestore'dan gelen mevcut görselin URL'si.
   DateTime _pickedTime = DateTime.now();
   DateTime? _pickedDueDate;//son ödeme tarihi
   Set<String> _selectedUnit = {'kWh'};
@@ -78,6 +84,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       _pickedTime = r.readingTime;
       _pickedDueDate = r.dueDate;
       _selectedUnit = {r.unit ?? 'kWh'};
+      _existingInvoiceImageUrl = r.invoiceImageUrl;
       if (r.gpsLat != null && r.gpsLng != null) {
         _gpsPos = Position(
           latitude: r.gpsLat!,
@@ -107,36 +114,65 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
 
   // OCR ve documentscanner
   Future<void> _scanWithOcr() async {
-    final scanner = DocumentScanner(
-      options: DocumentScannerOptions(
-        documentFormat: DocumentFormat.jpeg,
-        mode: ScannerMode.filter,
-        pageLimit: 1,
-        isGalleryImport: true,
-      ),
-    );
+    // Önce galeri iznini kontrol edip istiyoruz
+    var status = await Permission.photos.status;
+    if (status.isDenied) {
+      status = await Permission.photos.request();
+    }
 
-    setState(() => _isScanning = true);//yükleniyor animasyonu
+    if (status.isPermanentlyDenied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Galeri izni reddedildi. Lütfen uygulama ayarlarından izin verin.'),
+        ));
+      }
+      return;
+    }
+
+    if (!status.isGranted) return;
+
+    final scanner = DocumentScanner(options: DocumentScannerOptions(
+      documentFormat: DocumentFormat.jpeg,
+      mode: ScannerMode.filter,
+      pageLimit: 1,
+      isGalleryImport: true,
+    ));
+
+    setState(() => _isScanning = true);
+
     try {
-      final result = await scanner.scanDocument();//kamera ve galeri ekranı
-      await scanner.close();
-      if (result.images.isEmpty) return;//seçim resulta atanır iptalsa boş
+      final result = await scanner.scanDocument();
+      if (result.images.isEmpty) {
+        await scanner.close();
+        if(mounted) setState(() => _isScanning = false);
+        return;
+      }
 
-      final imgFile = File(result.images.first);
-      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      final recText = await recognizer.processImage(InputImage.fromFile(imgFile));
-      await recognizer.close();
+      // DOSYAYI GÜVENLİ BİR YERE KOPYALAMA AŞAMASI
+      final srcPath = result.images.first;
+      final tempDir = await getTemporaryDirectory();
+      final dstPath = '${tempDir.path}/scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final copiedImg = await File(srcPath).copy(dstPath);
 
-      // OCR sonucunu state'e kaydet.
+      // Artık bize ait bir kopyası olduğu için state'i güncelleyebiliriz
       if (mounted) {
         setState(() {
-          _lastOcrResultText = recText.text;//orjinal metni debug için sakla
+          _scannedImageFile = copiedImg;
+          _existingInvoiceImageUrl = null;
         });
       }
 
-      final data = _parse(recText);//metin analizi
-      _populateFields(data);//alanları doldurma
-      //hata kontrol
+      // Geçici dosyalarla işimiz bitti, şimdi tarayıcıyı kapatabiliriz.
+      await scanner.close();
+
+      // OCR ve diğer işlemler için artık kendi kopyaladığımız dosyayı kullanıyoruz
+      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final recText = await recognizer.processImage(InputImage.fromFile(copiedImg));
+      await recognizer.close();
+
+      final data = _parse(recText);
+      _populateFields(data);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(data.isEmpty
@@ -147,15 +183,14 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('OCR hatası: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bir hata oluştu: $e')));
       }
     } finally {
       if (mounted) setState(() => _isScanning = false);
     }
   }
 
-  // ————————————————————————————————  Normalization
+  // ————————————————————————————————  Normalization & Parsing (Bu kısım değişmedi)
   String _norm(String s) => s
       .toLowerCase()
       .replaceAll('ç', 'c')
@@ -168,9 +203,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
-
-
-  // istediğimiz kelimeleri bulma
   Map<String, String> _parse(RecognizedText rec) {
     final elements = rec.blocks
         .expand((b) => b.lines
@@ -248,12 +280,12 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
         'kw': ['tüketim(kwh)','tüketim', 'enerji tuketim bedeli','tuketim'],
         're': [RegExp(r'\b\d{1,3}(?:\.\d{3})*,\d{3}\b')], // Elektrikte ondalıklı olabilir
         'negKw': ['fiyat', 'oran', 'tl', 'kr', 'krs', 'bedel(tl)', // Parasal ifadeler
-        'yüksek kademe', 'yuksek kademe', // Yanlış kademeyi engelle
-        'gece', 'gunduz', 'puant', 'tek zaman', // Zaman dilimlerini engelle
-        'endeks', 'indeks', 'fark', // Endeks tablosundaki diğer sütunları engelle
-        'ortalama', // Ortalama tüketimi engelle
-        'sayac no', 'abone no', 'tesisat no', 'fatura no', // Numaraları engelle
-        'kwh', 'gun say', 'gün say' ,'ödenecek tutar','tutar','fatura kodu','elektrik faturası','fatura',
+          'yüksek kademe', 'yuksek kademe', // Yanlış kademeyi engelle
+          'gece', 'gunduz', 'puant', 'tek zaman', // Zaman dilimlerini engelle
+          'endeks', 'indeks', 'fark', // Endeks tablosundaki diğer sütunları engelle
+          'ortalama', // Ortalama tüketimi engelle
+          'sayac no', 'abone no', 'tesisat no', 'fatura no', // Numaraları engelle
+          'kwh', 'gun say', 'gün say' ,'ödenecek tutar','tutar','fatura kodu','elektrik faturası','fatura',
           'fatura otalama'// Birimleri ve gün sayısını engelle],
         ],
       },
@@ -304,8 +336,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     return out;
   }
 
-
-  /// Çok kelimeli negatif ifadeleri tanıyabilir ve belirsizlik sorunlarını çözer.
   _Candidate? _findCandidate(List<_LineInfo> elements, Map<String, dynamic> spec,
       double Function(Rect, Rect) scorer, String fieldKey) {
     final kw = (spec['kw'] as List<String>).map(_norm).toList();
@@ -455,7 +485,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     return vals.first;
   }
 
-  /// Tarih metinlerini standart DateTime nesnesine çevirir.
   DateTime? _parseDate(String dateStr) {
     final cleanDate = dateStr.replaceAll('/', '.').replaceAll('-', '.');
     final formats = [
@@ -470,7 +499,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     return null;
   }
 
-
   double Function(Rect, Rect) _getScorer(String name) {
     switch (name) {
       case 'findRight':
@@ -483,9 +511,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
         return (a, b) => double.infinity;
     }
   }
-  // Lütfen bu 3 fonksiyonu da kopyalayıp eskileriyle değiştirin.
 
-// _scoreRightOf fonksiyonu güncellendi
   double _scoreRightOf(Rect k, Rect v) {
     final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
     if (yOverlap < (k.height * 0.3)) return double.infinity;
@@ -498,7 +524,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     return dx.abs();
   }
 
-// _scoreLeftOf fonksiyonu güncellendi
   double _scoreLeftOf(Rect k, Rect v) {
     final yOverlap = math.max(0.0, math.min(k.bottom, v.bottom) - math.max(k.top, v.top));
     if (yOverlap < (k.height * 0.3)) return double.infinity;
@@ -510,7 +535,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     return dx.abs();
   }
 
-// _scoreBelow fonksiyonu güncellendi
   double _scoreBelow(Rect k, Rect v) {
     final horizontallyAligned = (v.center.dx - k.center.dx).abs() < (k.width * 1.5);
 
@@ -549,6 +573,48 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
   }
 
   // ───────────────────── LOCATION & SAVE/UPDATE
+
+  // EKLENDİ: Fatura görselini Firebase Storage'a yükleyen fonksiyon.
+  // LÜTFEN MEVCUT _uploadInvoiceImage FONKSİYONUNUZU SİLİP BUNU YAPIŞTIRIN
+
+  // lib/screens/new_reading_screen.dart içine yapıştırılacak kod
+
+  Future<String?> _uploadInvoiceImage(File imageFile, String userId) async {
+    print('--- [DEBUG] YÜKLEME FONKSİYONU BAŞLADI ---');
+    try {
+      final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      print('--- [DEBUG] 1. Adım: Dosya Adı: $fileName');
+
+      final ref = FirebaseStorage.instance.ref()
+          .child('invoice_images')
+          .child(userId) // <-- KULLANICININ KİMLİĞİYLE BİR KLASÖR OLUŞTURUYORUZ
+          .child(fileName); print('--- [DEBUG] 2. Adım: Storage Referansı: ${ref.fullPath}');
+
+      print('--- [DEBUG] 3. Adım: Dosya Yükleme Başlıyor (putFile)...');
+      UploadTask uploadTask = ref.putFile(imageFile);
+
+      TaskSnapshot snapshot = await uploadTask;
+      print('--- [DEBUG] 4. Adım: Dosya Yükleme Tamamlandı!');
+
+      print('--- [DEBUG] 5. Adım: İndirme URL\'si Alınıyor (getDownloadURL)...');
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      print('--- [DEBUG] 6. Adım: URL Başarıyla Alındı!');
+      print('--- [DEBUG] YÜKLEME BAŞARILI ---');
+      return downloadUrl;
+
+    } catch (e, s) {
+      print('!!!!!!!!!!      YÜKLEME HATASI      !!!!!!!!!!');
+      print('HATA MESAJI: $e');
+      if (e is FirebaseException) {
+        print('FIREBASE HATA KODU: ${e.code}');
+        print('FIREBASE HATA AÇIKLAMASI: ${e.message}');
+      }
+      print('STACK TRACE (Teknik Hata Detayı):');
+      print(s);
+      return null;
+    }
+  }
+
   Future<void> _handleLocationPermission() async {
     setState(() => _isGettingLocation = true);
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -599,13 +665,25 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       if (mounted) setState(() => _isGettingLocation = false);
     }
   }
-//veritabanına kaydetme
+
+  // GÜNCELLENDİ: Kaydetme fonksiyonu görsel yüklemeyi içerecek şekilde tamamen değiştirildi.
   Future<void> _saveOrUpdate() async {
-    if (!_formKey.currentState!.validate() || _isSaving) return;//zorunlu alanların kontrolü
+    if (!_formKey.currentState!.validate() || _isSaving) return;
     setState(() => _isSaving = true);
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Giriş yapmalısınız.');
+
+      String? invoiceImageUrl = _existingInvoiceImageUrl;
+
+      // Eğer yeni bir görsel taranmışsa, onu yükle.
+      if (_scannedImageFile != null) {
+        invoiceImageUrl = await _uploadInvoiceImage(_scannedImageFile!, user.uid);
+        if (invoiceImageUrl == null) {
+          // Yükleme başarısız olursa işlemi durdur.
+          throw Exception("Görsel yüklenemediği için kayıt başarısız.");
+        }
+      }
 
       final readingValue = double.tryParse(
           _valueCtrl.text.trim().replaceAll(RegExp(r'[.,]'), '')) ?? 0.0;
@@ -628,6 +706,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
         'invoiceAmount': invoiceAmount,
         'dueDate': _pickedDueDate,
         'dueAmount': null,
+        'invoiceImageUrl': invoiceImageUrl, // Veritabanına görsel URL'sini ekle
       };
       final ref = FirebaseFirestore.instance
           .collection('users')
@@ -655,6 +734,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       if (mounted) setState(() => _isSaving = false);
     }
   }
+
   // ────────────────────────────── UI ──────────────────────────────── //
 
   void _showScanTipsDialog() {
@@ -666,7 +746,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
           Text('• İyi ışık altında fotoğraf çekin'),
           Text('• Faturanın tamamı görünür olsun'),
           Text('• Buruşukluklardan kaçının'),
-          Text('• Kamera sabit tutun'),
+          Text('• Kamerayı sabit tutun'),
           Text('• Gerekirse birkaç kez deneyin'),
         ],
       ),
@@ -708,7 +788,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // DEĞİŞİKLİK: Kopyala butonu işlevsel hale getirildi.
                   TextButton(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: ocrText));
@@ -730,6 +809,80 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
     );
   }
 
+  // EKLENDİ: Fatura görseli önizlemesini gösteren widget.
+  Widget _buildInvoicePreview() {
+    if (_scannedImageFile == null && _existingInvoiceImageUrl == null) {
+      return const SizedBox.shrink();
+    }
+
+    ImageProvider imageProvider;
+    if (_scannedImageFile != null) {
+      imageProvider = FileImage(_scannedImageFile!);
+    } else {
+      imageProvider = NetworkImage(_existingInvoiceImageUrl!);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Fatura Görseli", style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image(
+                  image: imageProvider,
+                  height: 150,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 150,
+                      width: double.infinity,
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    height: 150,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.broken_image, color: Colors.grey, size: 40),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black.withOpacity(0.6),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                    onPressed: () {
+                      setState(() {
+                        _scannedImageFile = null;
+                        _existingInvoiceImageUrl = null;
+                      });
+                    },
+                    tooltip: 'Görseli Kaldır',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -740,7 +893,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
             const Padding(padding: EdgeInsets.all(16.0), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white)))
           else ...[
             IconButton(icon: const Icon(Icons.camera_alt_outlined), tooltip: 'Faturayı Tara', onPressed: _scanWithOcr),
-            // DEĞİŞİKLİK: PopupMenuButton güncellendi.
             PopupMenuButton<String>(
               onSelected: (value) {
                 switch (value) {
@@ -756,14 +908,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
               itemBuilder: (context) {
                 final menuItems = <PopupMenuEntry<String>>[
                   const PopupMenuItem(
-                    value: 'manual_scan',
-                    child: ListTile(
-                      leading: Icon(Icons.edit),
-                      title: Text('Manuel Giriş'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem(
                     value: 'scan_tips',
                     child: ListTile(
                       leading: Icon(Icons.help_outline),
@@ -772,7 +916,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
                     ),
                   ),
                 ];
-                // Yalnızca bir tarama yapıldıysa debug menüsünü göster
                 if (_lastOcrResultText != null) {
                   menuItems.add(const PopupMenuDivider());
                   menuItems.add(
@@ -799,6 +942,9 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // GÜNCELLENDİ: Formun en başına fatura görseli önizlemesi eklendi.
+              _buildInvoicePreview(),
+
               TextFormField(controller: _meterNameCtrl, decoration: const InputDecoration(labelText: 'Sayaç Adı (örn: Ev Elektrik)', prefixIcon: Icon(Icons.label_important_outline), border: OutlineInputBorder())),
               const SizedBox(height: 16),
               TextFormField(controller: _installationIdCtrl, decoration: const InputDecoration(labelText: 'Tesisat Numarası', prefixIcon: Icon(Icons.confirmation_number_outlined), border: OutlineInputBorder()), validator: (v) => v!.trim().isEmpty ? 'Tesisat numarası zorunludur' : null),

@@ -15,10 +15,11 @@ class MeterReading {
   final double? invoiceAmount;
   final DateTime? dueDate;
   final double? dueAmount;
+  final String? invoiceImageUrl;
 
   MeterReading({
     required this.id,
-    this.meterName, // GÜNCELLEME: Constructor'a eklendi.
+    this.meterName,
     required this.installationId,
     required this.readingValue,
     required this.readingTime,
@@ -29,6 +30,7 @@ class MeterReading {
     this.invoiceAmount,
     this.dueDate,
     this.dueAmount,
+    this.invoiceImageUrl,
   });
 
   /// Bu metod, nesneyi Firestore'a yazmak için bir Map'e dönüştürür.
@@ -50,22 +52,23 @@ class MeterReading {
 
   /// Bu factory constructor, Firestore'dan gelen bir dokümanı
   /// MeterReading nesnesine dönüştürür.
-  factory MeterReading.fromSnapshot(DocumentSnapshot snap) {
-    var data = snap.data() as Map<String, dynamic>;
+  factory MeterReading.fromSnapshot(DocumentSnapshot doc) {
+    // doc.data() null olabilir, bu yüzden güvenli bir şekilde erişelim
+    final data = doc.data() as Map<String, dynamic>? ?? {};
 
     return MeterReading(
-      id: snap.id,
-      meterName: data['meterName'], // GÜNCELLEME: Firestore'dan veri okunurken eklendi.
-      installationId: data['installationId'],
-      readingValue: data['readingValue'],
-      readingTime: (data['readingTime'] as Timestamp).toDate(),
+      id: doc.id,
+      meterName: data['meterName'],
+      installationId: data['installationId'] ?? '', // Null kontrolü
+      readingValue: (data['readingValue'] as num?)?.toDouble() ?? 0.0, // null check
+      readingTime: (data['readingTime'] as Timestamp?)?.toDate() ?? DateTime.now(), // null check
       unit: data['unit'],
       locationText: data['locationText'],
-      gpsLat: data['gpsLat'],
-      gpsLng: data['gpsLng'],
-      invoiceAmount: data['invoiceAmount'],
-      dueDate: data['dueDate'] != null ? (data['dueDate'] as Timestamp).toDate() : null,
-      dueAmount: data['dueAmount'],
+      gpsLat: (data['gpsLat'] as num?)?.toDouble(),
+      gpsLng: (data['gpsLng'] as num?)?.toDouble(),
+      invoiceAmount: (data['invoiceAmount'] as num?)?.toDouble(),
+      dueDate: (data['dueDate'] as Timestamp?)?.toDate(),
+      invoiceImageUrl: data['invoiceImageUrl'], // fatura görseli değişkeni
     );
   }
 }

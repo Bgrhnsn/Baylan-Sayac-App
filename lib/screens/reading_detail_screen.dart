@@ -3,7 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:sayacfaturapp/models/meter_reading.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart'; // Harita linkini açmak için
+import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 // Düzenleme ekranını import ediyoruz.
 import 'package:sayacfaturapp/screens/new_reading_screen.dart';
@@ -50,6 +51,12 @@ class ReadingDetailScreen extends StatelessWidget {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
+      // GÜNCELLEME: Eğer bir görsel varsa, onu da Storage'dan siliyoruz.
+      if (reading.invoiceImageUrl != null) {
+        // Tam URL'den referansı alarak silme işlemi
+        FirebaseStorage.instance.refFromURL(reading.invoiceImageUrl!).delete();
+      }
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -72,7 +79,7 @@ class ReadingDetailScreen extends StatelessWidget {
     }
   }
 
-  // Harita uygulamasını açan metod
+  // GÜNCELLEME: Harita uygulamasını doğru URL ile açan metod.
   Future<void> _openMap(BuildContext context, double lat, double lng) async {
     final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
     if (await canLaunchUrl(uri)) {
@@ -90,7 +97,6 @@ class ReadingDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // GÜNCELLEME: Başlık olarak sayaç adı gösteriliyor.
         title: Text(reading.meterName ?? reading.installationId),
         actions: [
           IconButton(
@@ -112,11 +118,14 @@ class ReadingDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // YENİ: Fatura görselini gösteren kart eklendi.
+          if (reading.invoiceImageUrl != null)
+            _buildInvoiceImageCard(context),
+
           _buildDetailCard(
             context,
             title: 'Tesisat Bilgileri',
             children: [
-              // GÜNCELLEME: Sayaç adı varsa gösteriliyor.
               if (reading.meterName != null && reading.meterName!.isNotEmpty)
                 _DetailRow(
                   icon: Icons.label_important_outline,
@@ -136,7 +145,7 @@ class ReadingDetailScreen extends StatelessWidget {
               _DetailRow(
                 icon: Icons.today,
                 label: 'Okuma Zamanı',
-                value: DateFormat('dd MMMM HH:mm', 'tr_TR').format(reading.readingTime),
+                value: DateFormat('dd MMMM yyyy, HH:mm', 'tr_TR').format(reading.readingTime),
               ),
             ],
           ),
@@ -155,7 +164,7 @@ class ReadingDetailScreen extends StatelessWidget {
                   _DetailRow(
                     icon: Icons.event_busy,
                     label: 'Son Ödeme Tarihi',
-                    value: DateFormat('dd MMMM HH:mm', 'tr_TR').format(reading.dueDate!),
+                    value: DateFormat('dd MMMM yyyy', 'tr_TR').format(reading.dueDate!),
                   ),
               ],
             ),
@@ -172,6 +181,9 @@ class ReadingDetailScreen extends StatelessWidget {
                   ),
                 if (reading.gpsLat != null && reading.gpsLng != null) ...[
                   const SizedBox(height: 8),
+                  // GÜNCELLEME: Harita görüntüsü için not eklendi.
+                  // Static Map'in çalışması için Google Cloud'dan "Maps Static API"
+                  // anahtarı alıp 'YOUR_API_KEY' kısmına yapıştırmalısınız.
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: GestureDetector(
@@ -180,14 +192,31 @@ class ReadingDetailScreen extends StatelessWidget {
                         alignment: Alignment.center,
                         children: [
                           Image.network(
-                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=YOUR_API_KEY',
+                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=YOUR_API_KEY', // BURAYA KENDİ API KEY'İNİZİ GİRİN
                             height: 150,
                             width: double.infinity,
                             fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                height: 150,
+                                color: Colors.grey[300],
+                                child: const Center(child: CircularProgressIndicator()),
+                              );
+                            },
                             errorBuilder: (context, error, stackTrace) => Container(
                               height: 150,
                               color: Colors.grey[300],
-                              child: const Center(child: Text('Harita yüklenemedi.')),
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Text(
+                                    'Harita yüklenemedi.\n(API Anahtarı gerekli)',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.grey[700]),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                           Container(
@@ -205,6 +234,42 @@ class ReadingDetailScreen extends StatelessWidget {
                 ]
               ],
             ),
+        ],
+      ),
+    );
+  }
+
+  // YENİ: Fatura görseli kartını oluşturan yardımcı widget.
+  Widget _buildInvoiceImageCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias, // Görselin kartın köşelerine taşmasını engeller
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text("Fatura Görseli", style: Theme.of(context).textTheme.titleLarge),
+          ),
+          Image.network(
+            reading.invoiceImageUrl!,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return const SizedBox(
+                height: 200,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return const SizedBox(
+                height: 200,
+                child: Center(child: Text("Görsel yüklenemedi.")),
+              );
+            },
+          ),
         ],
       ),
     );

@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:sayacfaturapp/models/meter_reading.dart';
 import 'package:sayacfaturapp/screens/reading_detail_screen.dart';
+// GÜNCELLEME: Stil sahibi özel kartımızı import ediyoruz.
+import 'package:sayacfaturapp/theme/custom_components.dart';
 
 /// Tüm sayaç okumalarını listeleyen ve filtreleme özellikleri sunan ekran.
 class HistoryScreen extends StatefulWidget {
@@ -17,15 +19,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   final TextEditingController _searchController = TextEditingController();
 
-  // Filtreleme için state değişkenleri
   String _searchQuery = '';
-  String? _selectedUnit; // null: Tümü, 'kWh': Elektrik, 'm³': Su
+  String? _selectedUnit;
   DateTimeRange? _selectedDateRange;
 
   @override
   void initState() {
     super.initState();
-    // Arama kutusundaki değişiklikleri dinle
     _searchController.addListener(() {
       if (mounted) {
         setState(() {
@@ -41,14 +41,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.dispose();
   }
 
-  // Tarih aralığı seçiciyi açan metod
   Future<void> _selectDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       initialDateRange: _selectedDateRange,
-      locale: const Locale('tr', 'TR'),
     );
     if (picked != null && picked != _selectedDateRange) {
       setState(() {
@@ -59,11 +57,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // GÜNCELLEME: Tema verilerini en üste alıyoruz.
+    final theme = Theme.of(context);
+
     return Column(
       children: [
-        // Filtreleme ve arama çubuğu
         _buildFilterBar(),
-        // Filtrelenmiş listeyi gösteren StreamBuilder
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -80,10 +79,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 return Center(child: Text('Bir hata oluştu: ${snapshot.error}'));
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const Center(
+                return Center(
+                  // GÜNCELLEME: Metin stili temadan alınıyor.
                   child: Text(
                     'Henüz hiç kayıt bulunmuyor.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                    style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey.shade600),
                   ),
                 );
               }
@@ -92,33 +92,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   .map((doc) => MeterReading.fromSnapshot(doc))
                   .toList();
 
-              // Filtreleri uygula
               final filteredReadings = allReadings.where((reading) {
-                // GÜNCELLEME: Arama mantığı artık sayaç adını da içeriyor.
                 final searchMatch = _searchQuery.isEmpty ||
                     (reading.meterName?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
                     reading.installationId.toLowerCase().contains(_searchQuery.toLowerCase());
-
                 final unitMatch = _selectedUnit == null || reading.unit == _selectedUnit;
-
                 final dateMatch = _selectedDateRange == null ||
                     (reading.readingTime.isAfter(_selectedDateRange!.start) &&
                         reading.readingTime.isBefore(_selectedDateRange!.end.add(const Duration(days: 1))));
-
                 return searchMatch && unitMatch && dateMatch;
               }).toList();
 
               if (filteredReadings.isEmpty) {
-                return const Center(
+                return Center(
+                  // GÜNCELLEME: Metin stili temadan alınıyor.
                   child: Text(
                     'Bu filtrelere uygun kayıt bulunamadı.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                    style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey.shade600),
                   ),
                 );
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                 itemCount: filteredReadings.length,
                 itemBuilder: (context, index) {
                   return _buildReadingListItem(context, filteredReadings[index]);
@@ -131,82 +127,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// Filtreleme seçeneklerini içeren arayüzü oluşturan widget.
   Widget _buildFilterBar() {
+    final theme = Theme.of(context);
+
     return Padding(
-      padding: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // Arama Çubuğu
           TextField(
             controller: _searchController,
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value;
-              });
-            },
+            // GÜNCELLEME: Dekorasyon artık merkezi temadan (inputDecorationTheme) geliyor.
             decoration: InputDecoration(
-              // GÜNCELLEME: Arama kutusu etiketi güncellendi.
               labelText: 'Sayaç Adı veya Tesisat No ile Ara',
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                 icon: const Icon(Icons.clear),
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
                 },
               )
                   : null,
             ),
           ),
-          const SizedBox(height: 8),
-          // Birim ve Tarih Filtreleri
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: Wrap(
                   spacing: 8.0,
+                  runSpacing: 8.0,
                   children: [
+                    // GÜNCELLEME: ChoiceChip'ler artık merkezi temadan (chipTheme) stillerini alıyor.
                     ChoiceChip(
                       label: const Text('Tümü'),
                       selected: _selectedUnit == null,
-                      onSelected: (selected) {
-                        setState(() => _selectedUnit = null);
-                      },
+                      onSelected: (selected) => setState(() => _selectedUnit = null),
                     ),
                     ChoiceChip(
                       label: const Text('kWh'),
-                      avatar: const Icon(Icons.electric_bolt, size: 16),
+                      avatar: Icon(Icons.electric_bolt, size: 18, color: _selectedUnit == 'kWh' ? Colors.white : theme.colorScheme.primary),
                       selected: _selectedUnit == 'kWh',
-                      onSelected: (selected) {
-                        setState(() => _selectedUnit = 'kWh');
-                      },
+                      onSelected: (selected) => setState(() => _selectedUnit = 'kWh'),
                     ),
                     ChoiceChip(
                       label: const Text('m³'),
-                      avatar: const Icon(Icons.water_drop, size: 16),
+                      avatar: Icon(Icons.water_drop, size: 18, color: _selectedUnit == 'm³' ? Colors.white : Colors.blueAccent),
                       selected: _selectedUnit == 'm³',
-                      onSelected: (selected) {
-                        setState(() => _selectedUnit = 'm³');
-                      },
+                      onSelected: (selected) => setState(() => _selectedUnit = 'm³'),
                     ),
                   ],
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.calendar_month, color: _selectedDateRange != null ? Theme.of(context).primaryColor : Colors.grey),
+                icon: Icon(Icons.calendar_month, color: _selectedDateRange != null ? theme.colorScheme.primary : Colors.grey),
                 tooltip: 'Tarihe Göre Filtrele',
                 onPressed: _selectDateRange,
               ),
               if (_selectedDateRange != null)
                 IconButton(
-                  icon: const Icon(Icons.filter_alt_off, color: Colors.grey),
+                  icon: const Icon(Icons.close, color: Colors.grey),
                   tooltip: 'Tarih Filtresini Temizle',
                   onPressed: () => setState(() => _selectedDateRange = null),
                 ),
@@ -217,8 +197,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// Liste elemanını oluşturan yardımcı metod.
   Widget _buildReadingListItem(BuildContext context, MeterReading reading) {
+    final theme = Theme.of(context);
     final IconData iconData;
     final Color iconColor;
     if (reading.unit == 'kWh') {
@@ -232,39 +212,60 @@ class _HistoryScreenState extends State<HistoryScreen> {
       iconColor = Colors.grey;
     }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: iconColor.withOpacity(0.15),
-          child: Icon(iconData, color: iconColor),
+    // GÜNCELLEME: Hard-coded Card yerine merkezi AppStyledCard kullanılıyor.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: AppStyledCard(
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: iconColor.withOpacity(0.15),
+            child: Icon(iconData, color: iconColor),
+          ),
+          // GÜNCELLEME: Metin stilleri temadan alınıyor.
+          title: Text(
+            reading.meterName ?? reading.installationId,
+            style: theme.textTheme.titleMedium,
+          ),
+          subtitle: Text(
+            '${reading.readingValue} ${reading.unit ?? ''} | ${DateFormat('dd MMM yyyy, HH:mm', 'tr_TR').format(reading.readingTime)}',
+            style: theme.textTheme.bodyMedium,
+          ),
+          trailing: SizedBox(
+            width: 100,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (reading.invoiceAmount != null)
+                  Expanded(
+                    child: Text(
+                      NumberFormat.currency(locale: 'tr_TR', symbol: '₺').format(reading.invoiceAmount),
+                      style: theme.textTheme.titleMedium,
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                if (reading.invoiceImageUrl != null) ...[
+                  const SizedBox(width: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      reading.invoiceImageUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 24, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (context) => ReadingDetailScreen(reading: reading),
+            ));
+          },
         ),
-        // GÜNCELLEME: Başlık olarak sayaç adı gösteriliyor.
-        title: Text(
-          reading.meterName ?? reading.installationId, // Sayaç adı varsa onu, yoksa tesisat nosunu göster
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        // GÜNCELLEME: Alt başlık düzenlendi.
-        subtitle: Text(
-          // Eğer özel bir sayaç adı varsa, tesisat numarasını alt başlıkta göster.
-          (reading.meterName != null ? '${reading.installationId}\n' : '') +
-              '${reading.readingValue} ${reading.unit ?? ''} | ${DateFormat('dd MMM, HH:mm', 'tr_TR').format(reading.readingTime)}',
-        ),
-        trailing: reading.invoiceAmount != null
-            ? Text(
-          NumberFormat.currency(locale: 'tr_TR', symbol: '₺').format(reading.invoiceAmount),
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
-        )
-            : null,
-        // GÜNCELLEME: Sayaç adı varsa 3 satır, yoksa 2 satır göster.
-        isThreeLine: reading.meterName != null,
-        onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => ReadingDetailScreen(reading: reading),
-          ));
-        },
       ),
     );
   }
