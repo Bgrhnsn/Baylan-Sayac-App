@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -18,13 +19,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _obscureAll = true;
-  bool _acceptedTerms = false;
+  bool _obscureAll = true;//şifre gizleme
+  bool _acceptedTerms = false;//kullanım şartları kkontrolü
   String? _errorMessage;
   String _strengthLabel = '';
 
   @override
-  void dispose() {
+  void dispose() {//bellek sızıntısını önlemek
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -81,13 +82,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       // 1. Kullanıcıyı Firebase Auth ile oluştur.
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
+        email: _emailController.text.trim(),//metni alır boşlukları temizler
         password: _passwordController.text.trim(),
       );
       // 2. Kullanıcının adını güncelle.
       await credential.user!.updateDisplayName(_nameController.text.trim());
 
-      // 3. ÖNEMLİ: Kullanıcıyı hemen çıkış yaptırarak Auth sarmalayıcısının
+      // Kullanıcıyı hemen çıkış yaptırarak Auth sarmalayıcısının
       // ana ekrana yönlendirmesini engelle ve manuel giriş yapmasını sağla.
       await FirebaseAuth.instance.signOut();
 
@@ -113,7 +114,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _signInWithGoogle() async {
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      final googleUser = await GoogleSignIn().signIn();
+      final googleUser = await GoogleSignIn().signIn();//kulannıcı seçimi
       if (googleUser == null) {
         if (mounted) setState(() => _isLoading = false);
         return;
@@ -125,12 +126,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       await FirebaseAuth.instance.signInWithCredential(credential);
       // Google ile giriş yapıldığında AuthWrapper ana ekrana yönlendirecektir.
-      // Bu yüzden burada manuel yönlendirme yok.
+      if(mounted){
+        Navigator.of(context).popUntil((route)=>route.isFirst);
+      }
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = 'Google ile giriş başarısız oldu.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Google ile giriş başarısız oldu. Lütfen tekrar deneyin.';
+          _isLoading = false;
+        });
+      }
     }
+  }
+  // YENİ: Politika metinlerini göstermek için bir yardımcı fonksiyon.
+  void _showPolicyDialog(String title, String content) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(content)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -174,7 +196,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 16),
 
                     TextFormField(
-                      controller: _emailController,
+                      controller: _emailController,//controller bağlnaır
                       decoration: const InputDecoration(
                         labelText: 'E-posta',
                         prefixIcon: Icon(Icons.email_outlined),
@@ -238,9 +260,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       value: _acceptedTerms,
                       onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
                       controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(
-                        'Kullanım Şartları ve Gizlilik Politikasını okudum, kabul ediyorum.',
-                        style: textTheme.bodyMedium,
+                      title: RichText(
+                        text: TextSpan(
+                          style: textTheme.bodyMedium, // Varsayılan metin stili
+                          children: <TextSpan>[
+                            TextSpan(
+                              text: 'Kullanım Şartları',
+                              style: TextStyle(
+                                color: colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  _showPolicyDialog(
+                                      'Kullanım Şartları',
+                                      'Son Güncelleme: 30 Temmuz 2025\n\n'
+                                          'AkışMetre\'ye hoş geldiniz. Bu uygulamayı kullanarak aşağıdaki şartları kabul etmiş sayılırsınız.\n\n'
+                                          '1. Hizmetin Amacı:\nSayaçFaturApp, elektrik, su, doğalgaz gibi sayaç okumalarınızı ve fatura bilgilerinizi kaydetmenize, takip etmenize ve analiz etmenize olanak tanıyan bir kişisel finans aracıdır. Uygulama tarafından sunulan grafikler ve istatistikler yalnızca bilgilendirme amaçlıdır ve finansal tavsiye niteliği taşımaz.\n\n'
+                                          '2. Kullanıcı Sorumlulukları:\na. Girdiğiniz tüm sayaç okuma, fatura tutarı ve tarih bilgilerinin doğruluğundan siz sorumlusunuz. Hatalı veri girişi, yanlış analizlere ve istatistiklere yol açabilir.\nb. Hesap bilgilerinizin (e-posta, şifre) güvenliğini sağlamak sizin sorumluluğunuzdadır.\n\n'
+                                          '3. Veri Saklama:\nGirdiğiniz tüm veriler, güvenli Firebase altyapısında saklanmaktadır. Fatura görselleri Firebase Storage\'da, diğer verileriniz ise Firestore veritabanında tutulur.\n\n'
+                                          '4. Hizmetin Sonlandırılması:\nBu şartlara uymamanız veya yasa dışı faaliyetlerde bulunmanız halinde hesabınızı askıya alma veya kalıcı olarak silme hakkımızı saklı tutarız.\n\n'
+                                          'Bu şartlar zamanla güncellenebilir. Değişiklikler hakkında sizi bilgilendireceğiz.'
+                                  );
+                                },
+                            ),
+                            const TextSpan(text: ' ve '),
+                            TextSpan(
+                              text: 'Gizlilik Politikasını',
+                              style: TextStyle(
+                                color: colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  _showPolicyDialog(
+                                      'Gizlilik Politikası',
+                                      'Son Güncelleme: 30 Temmuz 2025\n\n'
+                                          'Bu politika, AkışMetre\'nin kişisel verilerinizi nasıl topladığını, kullandığını ve koruduğunu açıklamaktadır.\n\n'
+                                          '1. Topladığımız Bilgiler:\n'
+                                          '• Hesap Bilgileri: Kayıt sırasında sağladığınız ad-soyad, e-posta adresi.\n'
+                                          '• Kullanım Verileri: Girdiğiniz sayaç okuma değerleri, fatura tutarları, tarihler, sayaç tesisat numaraları ve sayaç adları.\n'
+                                          '• Görsel Veriler: Yüklediğiniz fatura fotoğrafları.\n\n'
+                                          '2. Bilgileri Nasıl Kullanıyoruz?\n'
+                                          '• Hizmeti Sağlamak İçin: Verilerinizi, tüketiminizi takip etmeniz, faturalarınızı yönetmeniz ve analizler oluşturmanız için kullanırız.\n'
+                                          '• Uygulamayı İyileştirmek İçin: Anonimleştirilmiş kullanım verilerini, uygulama performansını analiz etmek ve yeni özellikler geliştirmek için kullanabiliriz.\n'
+                                          '• İletişim İçin: Şifre sıfırlama veya önemli hizmet duyuruları gibi konularda sizinle e-posta yoluyla iletişim kurabiliriz.\n\n'
+                                          '3. Veri Paylaşımı:\nKişisel verileriniz, yasal bir zorunluluk olmadıkça hiçbir üçüncü taraf ile paylaşılmaz.\n\n'
+                                          '4. Veri Güvenliği:\nVerileriniz, Google Firebase tarafından sağlanan endüstri standardı güvenlik önlemleriyle korunmaktadır.\n\n'
+                                          '5. Verilerin Silinmesi:\nProfil ekranındaki \'Hesabımı Sil\' seçeneğini kullanarak tüm verilerinizi kalıcı olarak silebilirsiniz.'
+                                  );
+                                },
+                            ),
+                            const TextSpan(text: ' okudum, kabul ediyorum.'),
+                          ],
+                        ),
                       ),
                       contentPadding: EdgeInsets.zero,
                     ),
@@ -296,7 +369,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
 
           if (_isLoading)
-            const ModalBarrier(dismissible: false, color: Colors.black45),
+            const ModalBarrier(dismissible: false, color: Colors.black45),//dönen göstergesi
           if (_isLoading)
             const Center(child: CircularProgressIndicator()),
         ],

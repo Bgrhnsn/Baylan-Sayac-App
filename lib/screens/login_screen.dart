@@ -25,13 +25,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _firebaseErrorToTR(String code) {
     switch (code) {
+    // GÜVENLİK GÜNCELLEMESİ: Tüm hatalı giriş denemeleri tek bir mesajda birleştirildi.
       case 'user-not-found':
-      case 'INVALID_LOGIN_CREDENTIALS': // Bu yeni ve daha genel bir hata kodudur
-        return 'E-posta veya parola hatalı.';
       case 'wrong-password':
-        return 'Parola hatalı.';
+      case 'invalid-credential':
+        return 'E-posta veya parola hatalı.';
+
       case 'invalid-email':
         return 'Geçerli bir e-posta adresi girin.';
+      case 'user-disabled':
+        return 'Bu kullanıcı hesabı devre dışı bırakılmış.';
       case 'too-many-requests':
         return 'Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.';
       default:
@@ -48,10 +51,9 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      // GÜNCELLEME: Manuel yönlendirme kaldırıldı. AuthWrapper bunu otomatik yapacak.
-      // Navigator.pushReplacementNamed(context, '/home');
-      // SnackBar da kaldırıldı çünkü ekran hemen değişeceği için kullanıcı göremeyecektir.
+      // Manuel yönlendirme kaldırıldı. AuthWrapper bunu otomatik yapacak.
     } on FirebaseAuthException catch (e) {
+      print('YAKALANAN FIREBASE HATA KODU: ${e.code}');
       setState(() => _errorMessage = _firebaseErrorToTR(e.code));
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -73,8 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: googleAuth.idToken,
       );
       await FirebaseAuth.instance.signInWithCredential(credential);
-      // GÜNCELLEME: Manuel yönlendirme (pop) kaldırıldı. AuthWrapper bunu otomatik yapacak.
-      // if (context.mounted) { Navigator.pop(context); }
+      // Manuel yönlendirme (pop) kaldırıldı. AuthWrapper bunu otomatik yapacak.
     } catch (e) {
       if (mounted) setState(() => _errorMessage = 'Google ile giriş başarısız oldu.');
     } finally {
@@ -92,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Stack(
         children: [
           SafeArea(
-            child: SingleChildScrollView(
+            child: SingleChildScrollView(//formun taşmasını engellemek için
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Form(
                 key: _formKey,

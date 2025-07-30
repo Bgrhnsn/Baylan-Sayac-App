@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sayacfaturapp/models/meter_reading.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 /// Kullanıcı profili, istatistikler ve hesap yönetimi ekranı.
 class ProfileScreen extends StatefulWidget {
@@ -11,12 +12,13 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  final User? _currentUser = FirebaseAuth.instance.currentUser;
+class _ProfileScreenState extends State<ProfileScreen> {//profil sayfası mantığını ve durumunu yönetir
+  final User? _currentUser = FirebaseAuth.instance.currentUser;//mevcut kullanıcıyı alır
 
   // Çıkış yapma fonksiyonu
   Future<void> _signOut() async {
-    await FirebaseAuth.instance.signOut();
+    await GoogleSignIn().signOut();//google ile giriş yaptan çık
+    await FirebaseAuth.instance.signOut();//firebase authtan çık
     if (mounted) {
       // Tüm geçmişi temizleyerek login ekranına yönlendir
       Navigator.of(context).pushNamedAndRemoveUntil('/LoginScreen', (route) => false);
@@ -25,6 +27,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Şifre sıfırlama e-postası gönderme fonksiyonu
   Future<void> _resetPassword() async {
+    // 1. Mevcut kullanıcının e-posta adresi var mı diye kontrol et.
     if (_currentUser?.email == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Şifre sıfırlama linki göndermek için e-posta adresi bulunamadı.')),
@@ -32,13 +35,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     try {
+      // 2. Firebase'e e-posta gönderme komutunu ver.
       await FirebaseAuth.instance.sendPasswordResetEmail(email: _currentUser!.email!);
+
+      // 3. İşlem başarılıysa kullanıcıyı bilgilendir.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${_currentUser!.email} adresine şifre sıfırlama linki gönderildi.')),
         );
       }
     } catch (e) {
+      // 4. Bir hata olursa kullanıcıyı bilgilendir.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Bir hata oluştu: $e')),
@@ -74,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Hesabı ve ilgili verileri silen fonksiyon
+  // kullanıcı onayından sonra çalışır ve Hesabı ve ilgili verileri silen fonksiyon
   Future<void> _deleteAccount() async {
     try {
       if (_currentUser == null) return;
@@ -119,7 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {//ekran arayüz
     return Scaffold(
       // YENİ: Arka plan rengi diğer ekranlarla uyumlu hale getirildi.
       backgroundColor: const Color(0xFFF5F5F7),
@@ -177,7 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// YENİ: Modern arayüze uygun kullanıcı bilgi kartı.
+  // kullanıcı adını e postasının baş harflerinden ibr avatar kartı
   Widget _buildUserInfoCard() {
     String initials = _currentUser?.displayName?.isNotEmpty == true
         ? _currentUser!.displayName!.split(' ').map((e) => e[0]).take(2).join().toUpperCase()
@@ -239,7 +246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-/// YENİ: Modern arayüze uygun istatistik kartı.
+/// toplam kayıt ve kayıtlı sayaç kartı
 class _StatCard extends StatelessWidget {
   const _StatCard({required this.count, required this.label, required this.icon, required this.color});
   final String count;
@@ -269,7 +276,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// YENİ: Modern arayüze uygun eylem listesi elemanı.
+/// şifre değiştirme , çıkış yapma hesap silme butonları
 class _ActionTile extends StatelessWidget {
   const _ActionTile({required this.title, required this.icon, this.color, required this.onTap});
   final String title;

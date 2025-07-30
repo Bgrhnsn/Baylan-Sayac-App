@@ -156,7 +156,7 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
         return;
       }
 
-      final srcPath = result.images.first;
+      final srcPath = result.images.first;//cachede tutulur
       final tempDir = await getTemporaryDirectory();
       final dstPath = '${tempDir.path}/scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final copiedImg = await File(srcPath).copy(dstPath);
@@ -196,7 +196,6 @@ class _NewReadingScreenState extends State<NewReadingScreen> {//dinamik
       // 4. Alanları dolduruyoruz.
       _populateFields(data);
 
-      // --- GÜNCELLEME BURADA BİTİYOR ---
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

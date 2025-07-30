@@ -385,7 +385,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
                   LineChartBarData(
                     spots: data.asMap().entries.map((entry) => FlSpot(entry.key.toDouble(), entry.value.value)).toList(),
                     isCurved: true,
-                    gradient: const LinearGradient(colors: [Color(0xFF007AFF), Color(0xFF007AFF)]),
+                    gradient: const LinearGradient(colors: [Color(0xFF007AFF), Color(0xFF007AFF)]),//grafik çizgileri ve noktalarının rengi
                     barWidth: 3,
                     isStrokeCapRound: true,
                     dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 6, color: const Color(0xFF007AFF), strokeWidth: 3, strokeColor: Colors.white)),
