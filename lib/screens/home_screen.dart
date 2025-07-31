@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(_appBarTitles[_tab]),
         automaticallyImplyLeading: false,
       ),
-      body: IndexedStack(
+      body: IndexedStack(//her sekmenin stateti korunur
         index: _tab,
         children: tabs,
       ),
@@ -83,7 +83,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            Expanded(child: _NavItem(icon: Icons.home_rounded, label: 'Ana Sayfa', isActive: _tab == 0, onTap: () => setState(() => _tab = 0))),
+            //ana sayfa seçiliyse state değişmesin
+            Expanded(child: _NavItem(icon: Icons.home_rounded, label: 'Ana Sayfa', isActive: _tab == 0, onTap: () { if (_tab != 0) setState(() => _tab = 0); })),
             Expanded(child: _NavItem(icon: Icons.history_rounded, label: 'Geçmiş', isActive: _tab == 1, onTap: () => setState(() => _tab = 1))),
             Expanded(child: _AddButton(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NewReadingScreen())))),
             Expanded(child: _NavItem(icon: Icons.bar_chart_rounded, label: 'Grafik', isActive: _tab == 2, onTap: () => setState(() => _tab = 2))),
@@ -118,14 +119,14 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         final readings = snapshot.data!.docs.map((doc) => MeterReading.fromSnapshot(doc)).toList();
 
-        // YENİ: Grafik için veriyi işle
+        // son 6 ay fatura toplamları
         final invoiceData = _processInvoiceDataForHome(readings);
 
         return ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
             // YENİ: Eski kart yerine yeni grafik metodu çağrılıyor.
-            _buildHomeScreenMonthlyChart(invoiceData),
+            _buildHomeScreenMonthlyChart(invoiceData),//grafik
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -137,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            ListView.builder(
+            ListView.builder(//son 3 fatura
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: min(readings.length, 3),
@@ -251,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          //bu ay geçen ay değişim bilgileri
           _buildStatsRow([
             _StatItem(value: NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(currentAmount), label: 'Bu Ay', color: change > 0 ? const Color(0xFFFF3B30) : const Color(0xFF30D158)),
             _StatItem(value: NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(previousAmount), label: 'Geçen Ay', color: const Color(0xFF86868B)),
@@ -291,11 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// =======================================================================
-// YARDIMCI WIDGET'LAR VE SINIFLAR
-// =======================================================================
-
-/// YENİ: Grafik kartları için genel çerçeve widget'ı.
+/// YENİ: Grafik kartları için genel çerçeve widget'ı.gölge
 Widget _buildChartCard({required String title, required String period, required Widget child}) {
   return Container(
     decoration: BoxDecoration(
@@ -327,7 +325,7 @@ Widget _buildChartCard({required String title, required String period, required 
   );
 }
 
-/// YENİ: Grafik altındaki istatistik satırını oluşturan widget.
+/// bu ay geçen ay değişim istatisiği
 Widget _buildStatsRow(List<_StatItem> items) {
   return Row(
     children: items.map((item) {

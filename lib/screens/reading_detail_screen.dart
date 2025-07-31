@@ -55,10 +55,9 @@ class ReadingDetailScreen extends StatelessWidget {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // GÜNCELLEME: Eğer bir görsel varsa, onu da Storage'dan siliyoruz.
-      if (reading.invoiceImageUrl != null) {
-        // Tam URL'den referansı alarak silme işlemi
-        FirebaseStorage.instance.refFromURL(reading.invoiceImageUrl!).delete();
+      //await  konuldu önceden silme işlemi için beklennmşiyordu
+      if (reading.invoiceImageUrl != null && reading.invoiceImageUrl!.isNotEmpty) {
+        await FirebaseStorage.instance.refFromURL(reading.invoiceImageUrl!).delete();
       }
 
       await FirebaseFirestore.instance

@@ -67,7 +67,7 @@ Bu projeyi yerel makinenizde çalıştırmak için aşağıdaki adımları izley
 
 2.  **Projeyi Klonlayın:**
     ```bash
-    git clone [PROJENİZİN_GITHUB_LİNKİ]
+    git clone [https://github.com/Bgrhnsn/Baylan-Sayac-App]
     cd sayac-fatura-app
     ```
 

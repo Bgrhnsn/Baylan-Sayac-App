@@ -136,7 +136,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           TextField(
             controller: _searchController,
-            // GÜNCELLEME: Dekorasyon artık merkezi temadan (inputDecorationTheme) geliyor.
             decoration: InputDecoration(
               labelText: 'Sayaç Adı veya Tesisat No ile Ara',
               prefixIcon: const Icon(Icons.search),
@@ -153,43 +152,51 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8.0,
-                  runSpacing: 8.0,
-                  children: [
-                    // GÜNCELLEME: ChoiceChip'ler artık merkezi temadan (chipTheme) stillerini alıyor.
-                    ChoiceChip(
-                      label: const Text('Tümü'),
-                      selected: _selectedUnit == null,
-                      onSelected: (selected) => setState(() => _selectedUnit = null),
-                    ),
-                    ChoiceChip(
-                      label: const Text('kWh'),
-                      avatar: Icon(Icons.electric_bolt, size: 18, color: _selectedUnit == 'kWh' ? Colors.white : theme.colorScheme.primary),
-                      selected: _selectedUnit == 'kWh',
-                      onSelected: (selected) => setState(() => _selectedUnit = 'kWh'),
-                    ),
-                    ChoiceChip(
-                      label: const Text('m³'),
-                      avatar: Icon(Icons.water_drop, size: 18, color: _selectedUnit == 'm³' ? Colors.white : Colors.blueAccent),
-                      selected: _selectedUnit == 'm³',
-                      onSelected: (selected) => setState(() => _selectedUnit = 'm³'),
-                    ),
-                  ],
-                ),
+              // Çipler artık kendi Row'u içinde ve sadece gerektiğ/i kadar yer kaplıyor.
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Tümü'),
+                    selected: _selectedUnit == null,
+                    onSelected: (selected) => setState(() => _selectedUnit = null),
+                    showCheckmark: false,
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('kWh'),
+                    avatar: Icon(Icons.electric_bolt, size: 18, color: _selectedUnit == 'kWh' ? Colors.white : theme.colorScheme.primary),
+                    selected: _selectedUnit == 'kWh',
+                    onSelected: (selected) => setState(() => _selectedUnit = 'kWh'),
+                    showCheckmark: false,
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('m³'),
+                    avatar: Icon(Icons.water_drop, size: 18, color: _selectedUnit == 'm³' ? Colors.white : Colors.blueAccent),
+                    selected: _selectedUnit == 'm³',
+                    onSelected: (selected) => setState(() => _selectedUnit = 'm³'),
+                    showCheckmark: false,
+                  ),
+                ],
               ),
+              // Spacer, kalan tüm boşluğu doldurarak butonları sağa iter.
+              const Spacer(),
               IconButton(
                 icon: Icon(Icons.calendar_month, color: _selectedDateRange != null ? theme.colorScheme.primary : Colors.grey),
                 tooltip: 'Tarihe Göre Filtrele',
                 onPressed: _selectDateRange,
               ),
-              if (_selectedDateRange != null)
-                IconButton(
+              Opacity(
+                opacity: _selectedDateRange != null ? 1.0 : 0.0,
+                child: IconButton(
                   icon: const Icon(Icons.close, color: Colors.grey),
                   tooltip: 'Tarih Filtresini Temizle',
-                  onPressed: () => setState(() => _selectedDateRange = null),
+                  onPressed: _selectedDateRange != null
+                      ? () => setState(() => _selectedDateRange = null)
+                      : null,
                 ),
+              ),
             ],
           ),
         ],
