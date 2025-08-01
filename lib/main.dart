@@ -41,7 +41,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sayaç Fatura Uygulaması',
+      title: 'AkışMetre Fatura Uygulaması',
       debugShowCheckedModeBanner: false,
 
       // GÜNCELLEME: Tema, daha modern ve tutarlı bir görünüm için Material 3 ve ColorScheme kullanacak şekilde güncellendi.

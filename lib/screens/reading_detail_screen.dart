@@ -6,8 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
-import 'package:sayacfaturapp/screens/photo_viewer_screen.dart'; // YENİ: Oluşturduğumuz ekran
-import 'package:flutter/gestures.dart'; // DEĞİŞİKLİK GEREKMEYEBİLİR AMA OLMALI
+import 'package:sayacfaturapp/screens/photo_viewer_screen.dart'; //
+import 'package:flutter/gestures.dart'; //
 
 
 // Düzenleme ekranını import ediyoruz.
@@ -55,7 +55,7 @@ class ReadingDetailScreen extends StatelessWidget {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      //await  konuldu önceden silme işlemi için beklennmşiyordu
+      //await sffff konuldu önceden silme işlemi için beklennmşiyordu
       if (reading.invoiceImageUrl != null && reading.invoiceImageUrl!.isNotEmpty) {
         await FirebaseStorage.instance.refFromURL(reading.invoiceImageUrl!).delete();
       }
@@ -195,7 +195,7 @@ class ReadingDetailScreen extends StatelessWidget {
                         alignment: Alignment.center,
                         children: [
                           Image.network(
-                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=YOUR_API_KEY', // BURAYA KENDİ API KEY'İNİZİ GİRİN
+                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=AIzaSyB-2ZRLI6n1OzbQZ5YhuQzlzbYO2UWU4js', // google cloud api key
                             height: 150,
                             width: double.infinity,
                             fit: BoxFit.cover,
@@ -214,7 +214,7 @@ class ReadingDetailScreen extends StatelessWidget {
                                 child: Padding(
                                   padding: const EdgeInsets.all(8.0),
                                   child: Text(
-                                    'Harita yüklenemedi.\n(API Anahtarı gerekli)',
+                                    'Harita yüklenemedi.\n(API gerekli)',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: Colors.grey[700]),
                                   ),

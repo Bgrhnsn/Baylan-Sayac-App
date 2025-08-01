@@ -111,9 +111,10 @@ class _ChartsScreenState extends State<ChartsScreen> {
           distributionTotals.update(reading.unit!, (value) => value + reading.invoiceAmount!, ifAbsent: () => reading.invoiceAmount!);
         }
       }
-      if (reading.readingValue > 0 && reading.unit != null) {
-        final key = '$monthKey-${reading.unit}';
-        monthlyConsumptionTotalsByUnit.update(key, (value) => value + reading.readingValue, ifAbsent: () => reading.readingValue);
+      // _processReadings metodunda bu bölümü güncelleyin
+      if (reading.readingValue != null && reading.readingValue! > 0 && reading.unit != null) {
+        final key = '$monthKey-${reading.unit!}';
+        monthlyConsumptionTotalsByUnit.update(key, (value) => value + reading.readingValue!, ifAbsent: () => reading.readingValue!);
       }
     }
 
@@ -212,7 +213,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
                             if (_selectedChartType == 0)
                               _buildMonthlyChart(invoiceData)
                             else if (_selectedChartType == 1)
-                              _buildConsumptionChart(consumptionData)
+                              _buildConsumptionComparisonChart(consumptionData)
                             else
                               _buildCategoryChart(distributionData),
                           ],
@@ -324,8 +325,47 @@ class _ChartsScreenState extends State<ChartsScreen> {
     );
   }
 
+
+
   // --- GRAFİK OLUŞTURMA METOTLARI (İÇERİKLERİ AYNI KALIYOR)---
 
+  /// YENİ: Grafik eksenleri için "güzel" aralıklar ve maksimum değer hesaplayan yardımcı metot.
+  Map<String, double> _calculateNiceAxisValues(double maxValue) {
+    // Eğer hiç veri yoksa veya maksimum değer 0 ise, varsayılan bir aralık döndür.
+    if (maxValue <= 0) {
+      return {'maxY': 100.0, 'interval': 25.0};
+    }
+
+    // Ekranda yaklaşık olarak kaç adet çizgi/etiket görmek istediğimizi belirtiyoruz.
+    const int numberOfTicks = 4;
+    final double rawInterval = maxValue / numberOfTicks;
+
+    // Aralığın büyüklüğünü (10'un kuvveti olarak) buluyoruz.
+    final double magnitude = pow(10, (log(rawInterval) / log(10)).floor()).toDouble();
+    final double residual = rawInterval / magnitude;
+
+    // Bu büyüklüğe en uygun "güzel" çarpanı (1, 2, veya 5) seçiyoruz.
+    double niceMultiplier;
+    if (residual > 5) {
+      niceMultiplier = 10;
+    } else if (residual > 2) {
+      niceMultiplier = 5;
+    } else if (residual > 1) {
+      niceMultiplier = 2;
+    } else {
+      niceMultiplier = 1;
+    }
+
+    final double niceInterval = niceMultiplier * magnitude;
+
+    // Yeni "güzel" aralığımıza göre eksenin yeni maksimum değerini hesaplıyoruz.
+    final double niceMaxValue = (maxValue / niceInterval).ceil() * niceInterval;
+
+    return {'maxY': niceMaxValue, 'interval': niceInterval};
+  }
+
+
+  /// GÜNCELLEME: Aylık fatura grafiği artık "güzel" eksen değerleri kullanıyor.
   Widget _buildMonthlyChart(List<ChartDataPoint> data) {
     if (data.length < 2) {
       return _buildChartCard(
@@ -338,9 +378,13 @@ class _ChartsScreenState extends State<ChartsScreen> {
     final previousAmount = data[data.length - 2].value;
     final change = currentAmount - previousAmount;
 
-    final minY = (data.map((d) => d.value).reduce(min) * 0.9).floorToDouble();
-    final maxY = (data.map((d) => d.value).reduce(max) * 1.1).ceilToDouble();
-    final interval = ((maxY - minY) / 4).roundToDouble();
+    // Y eksenindeki maksimum değeri bul
+    final dataMaxY = data.isEmpty ? 0.0 : data.map((d) => d.value).reduce(max);
+
+    // YENİ: Akıllı eksen değerlerini hesapla
+    final axisValues = _calculateNiceAxisValues(dataMaxY);
+    final niceMaxY = axisValues['maxY']!;
+    final niceInterval = axisValues['interval']!;
 
     return _buildChartCard(
       title: 'Aylık Fatura Tutarı',
@@ -351,7 +395,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
             height: 200,
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: interval > 0 ? interval : 100, getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFF2F2F7), strokeWidth: 1, dashArray: [5, 5])),
+                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: niceInterval, getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFF2F2F7), strokeWidth: 1, dashArray: [5, 5])),
                 titlesData: FlTitlesData(
                   show: true,
                   rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -370,7 +414,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      interval: interval > 0 ? interval : 100,
+                      interval: niceInterval, // GÜNCELLEME
                       getTitlesWidget: (double value, TitleMeta meta) => Text('₺${(value / 1000).toStringAsFixed(1)}k', style: const TextStyle(color: Color(0xFF86868B), fontWeight: FontWeight.w500, fontSize: 12)),
                       reservedSize: 42,
                     ),
@@ -379,13 +423,13 @@ class _ChartsScreenState extends State<ChartsScreen> {
                 borderData: FlBorderData(show: false),
                 minX: 0,
                 maxX: data.length - 1.toDouble(),
-                minY: minY,
-                maxY: maxY,
+                minY: 0, // GÜNCELLEME: Eksen her zaman 0'dan başlasın
+                maxY: niceMaxY, // GÜNCELLEME
                 lineBarsData: [
                   LineChartBarData(
                     spots: data.asMap().entries.map((entry) => FlSpot(entry.key.toDouble(), entry.value.value)).toList(),
                     isCurved: true,
-                    gradient: const LinearGradient(colors: [Color(0xFF007AFF), Color(0xFF007AFF)]),//grafik çizgileri ve noktalarının rengi
+                    gradient: const LinearGradient(colors: [Color(0xFF007AFF), Color(0xFF007AFF)]),
                     barWidth: 3,
                     isStrokeCapRound: true,
                     dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 6, color: const Color(0xFF007AFF), strokeWidth: 3, strokeColor: Colors.white)),
@@ -453,81 +497,275 @@ class _ChartsScreenState extends State<ChartsScreen> {
     );
   }
 
-  Widget _buildConsumptionChart(Map<String, double> data) {
-    final now = DateTime.now();
-    final currentMonthKeyKwh = '${DateFormat('yyyy-MM').format(now)}-kWh';
-    final currentMonthKeyM3 = '${DateFormat('yyyy-MM').format(now)}-m³';
-    final prevMonth = DateTime(now.year, now.month - 1, 1);
-    final prevMonthKeyKwh = '${DateFormat('yyyy-MM').format(prevMonth)}-kWh';
-    final prevMonthKeyM3 = '${DateFormat('yyyy-MM').format(prevMonth)}-m³';
+  Widget _buildConsumptionComparisonChart(Map<String, double> consumptionData) {
+    if (consumptionData.length < 2) {
+      return _buildChartCard(
+          title: 'Aylık Fatura Tutarı',
+          period: 'Yeterli Veri Yok',
+          child: const SizedBox(height: 200, child: Center(child: Text('Karşılaştırma için en az 2 aylık veri gerekli.'))));
+    }
+    try {
+      // 1) Veri hazırlığı (değişmedi)
+      final safeConsumptionData = consumptionData;
+      final Set<String> availableMonths = {};
+      safeConsumptionData.keys.forEach((key) {
+        final parts = key.split('-');
+        if (parts.length >= 2) availableMonths.add('${parts[0]}-${parts[1]}');
+      });
+      final sortedMonths = availableMonths.toList()..sort();
+      final last6Months = sortedMonths.length > 6
+          ? sortedMonths.sublist(sortedMonths.length - 6)
+          : sortedMonths;
 
-    final consumptionDataList = [
-      ConsumptionData(currentUsage: data[currentMonthKeyKwh] ?? 0, previousUsage: data[prevMonthKeyKwh] ?? 0, limit: 450, unit: 'kWh', type: 'Elektrik'),
-      ConsumptionData(currentUsage: data[currentMonthKeyM3] ?? 0, previousUsage: data[prevMonthKeyM3] ?? 0, limit: 120, unit: 'm³', type: 'Su'),
-    ];
+      final monthlyData = <Map<String, dynamic>>[];
+      for (final monthKey in last6Months) {
+        try {
+          final monthDate = DateFormat('yyyy-MM').parse(monthKey);
+          monthlyData.add({
+            'month': DateFormat('MMM', 'tr_TR').format(monthDate),
+            'date': monthDate,
+            'kWh': safeConsumptionData['$monthKey-kWh'] ?? 0,
+            'm3': safeConsumptionData['$monthKey-m³'] ?? 0,
+          });
+        } catch (_) {
+          debugPrint('Hatalı ay formatı atlanıyor: $monthKey');
+        }
+      }
 
-    final selectedData = consumptionDataList[selectedConsumptionType];
+      if (monthlyData.isEmpty ||
+          !monthlyData.any((m) => m['kWh'] > 0 || m['m3'] > 0)) {
+        return _buildChartCard(
+          title: 'Tüketim Karşılaştırması',
+          period: '',
+          child: const SizedBox(
+              height: 200,
+              child: Center(child: Text('Bu dönem için tüketim verisi bulunamadı.'))),
+        );
+      }
 
-    return _buildChartCard(
-      title: 'Tüketim Oranı',
-      period: DateFormat('MMMM', 'tr_TR').format(DateTime.now()),
-      child: Column(
-        children: [
-          Container(
-            decoration: BoxDecoration(color: const Color(0xFFF2F2F7), borderRadius: BorderRadius.circular(12)),
-            child: Row(
-              children: [
-                Expanded(child: _buildTab('Elektrik', 0)),
-                Expanded(child: _buildTab('Su', 1)),
-              ],
+      // 2) Eksen değerleri
+      double maxKwh = 0, maxM3 = 0;
+      for (final m in monthlyData) {
+        maxKwh = max(maxKwh, m['kWh'] as double);
+        maxM3 = max(maxM3, m['m3'] as double);
+      }
+      final axis = _calculateNiceAxisValues(max(maxKwh, maxM3));
+      final niceMaxValue = axis['maxY']!;
+      final niceInterval = axis['interval']!;
+
+      // 3) Kart
+      return _buildChartCard(
+        title: 'Tüketim Karşılaştırması',
+        period: '', // gri etiket yok
+        child: Column(
+          children: [
+            // Sekmeler
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F2F7),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: _buildTab('Elektrik', 0)),
+                  Expanded(child: _buildTab('Su', 1)),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 120,
-            width: 120,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CircularProgressIndicator(
-                  value: selectedData.limit > 0 ? selectedData.percentage / 100 : 0,
-                  strokeWidth: 10,
-                  strokeCap: StrokeCap.round,
-                  backgroundColor: const Color(0xFFE5E5EA),
-                  valueColor: AlwaysStoppedAnimation<Color>(selectedConsumptionType == 0 ? const Color(0xFF007AFF) : const Color(0xFF30D158)),
-                ),
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(selectedData.currentUsage.toInt().toString(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1D1D1F))),
-                      Text(selectedData.unit, style: const TextStyle(fontSize: 12, color: Color(0xFF86868B))),
-                    ],
+            const SizedBox(height: 24),
+
+            // 4) GRAFİK – kaydırma yok
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Ekran genişliğine göre çubuk genişliği ayarla
+                final barWidth = (constraints.maxWidth /
+                    (monthlyData.length * 2)) // her grup + boşluk
+                    .clamp(8.0, 22.0);
+
+                return SizedBox(
+                  height: 200,
+                  child: BarChart(
+                    BarChartData(
+                      maxY: niceMaxValue,
+                      alignment: BarChartAlignment.spaceAround,
+                      titlesData: FlTitlesData(
+                        rightTitles:
+                        const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles:
+                        const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 30,
+                            getTitlesWidget: (value, meta) {
+                              final i = value.toInt();
+                              return i >= 0 && i < monthlyData.length
+                                  ? Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(monthlyData[i]['month'],
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF86868B))),
+                              )
+                                  : const SizedBox.shrink();
+                            },
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            interval: niceInterval,
+                            reservedSize: 42,
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              if (value % niceInterval != 0 && value != 0) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(value.toInt().toString(),
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF86868B)));
+                            },
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      barGroups: monthlyData.asMap().entries.map((e) {
+                        final i = e.key;
+                        final data = e.value;
+                        return BarChartGroupData(
+                          x: i,
+                          barRods: [
+                            BarChartRodData(
+                              toY: selectedConsumptionType == 0
+                                  ? data['kWh']
+                                  : data['m3'],
+                              color: selectedConsumptionType == 0
+                                  ? const Color(0xFFFFC300)
+                                  : const Color(0xFF007AFF),
+                              width: barWidth,
+                              borderRadius: BorderRadius.circular(6),
+                              backDrawRodData: BackgroundBarChartRodData(
+                                show: true,
+                                toY: niceMaxValue,
+                                color: const Color(0xFFE5E5EA),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 20),
-          _buildStatsRow([
-            _StatItem(value: '${selectedData.currentUsage.toInt()}', label: 'Bu Ay (${selectedData.unit})', color: const Color(0xFF1D1D1F)),
-            _StatItem(value: '${selectedData.previousUsage.toInt()}', label: 'Geçen Ay', color: const Color(0xFF86868B)),
-            _StatItem(value: '${selectedData.limit.toInt()}', label: 'Limit', color: const Color(0xFF86868B)),
-          ]),
-        ],
-      ),
-    );
+
+            const SizedBox(height: 16),
+            _buildConsumptionInsights(monthlyData),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Tüketim grafiği oluşturulurken hata: $e');
+      return _buildChartCard(
+        title: 'Tüketim Karşılaştırması',
+        period: 'Hata',
+        child: const SizedBox(
+            height: 200,
+            child: Center(child: Text('Grafik yüklenirken bir hata oluştu.'))),
+      );
+    }
   }
 
-  // --- YARDIMCI WIDGET'LAR ---
 
-  Widget _buildChartCard({required String title, required String period, required Widget child}) {
+  // --- YARDIMCI WIDGET'LAR ---
+  Widget _buildConsumptionInsights(List<Map<String, dynamic>> monthlyData) {
+    // Listeyi güvenli bir şekilde kontrol et
+    if (monthlyData == null || monthlyData.isEmpty || monthlyData.length < 2) {
+      return const SizedBox.shrink();
+    }
+
+    try {
+      final currentMonth = monthlyData.last;
+      final previousMonth = monthlyData[monthlyData.length - 2];
+
+      // Null değerleri güvenli bir şekilde ele al
+      final currentUsage = selectedConsumptionType == 0
+          ? (currentMonth['kWh'] as double? ?? 0.0)
+          : (currentMonth['m3'] as double? ?? 0.0);
+
+      final previousUsage = selectedConsumptionType == 0
+          ? (previousMonth['kWh'] as double? ?? 0.0)
+          : (previousMonth['m3'] as double? ?? 0.0);
+
+      // Anlamlı veri yoksa gösterme
+      if (currentUsage == 0 && previousUsage == 0) {
+        return const SizedBox.shrink();
+      }
+
+      final change = currentUsage - previousUsage;
+      final changePercentage = previousUsage > 0 ? (change / previousUsage) * 100 : 0;
+
+      final unit = selectedConsumptionType == 0 ? 'kWh' : 'm³';
+      final type = selectedConsumptionType == 0 ? 'Elektrik' : 'Su';
+
+      Color changeColor = change > 0 ? const Color(0xFFFF3B30) : const Color(0xFF30D158);
+      String changeText = change > 0 ? 'artış' : 'azalış';
+
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+            color: change > 0
+                ? const Color(0xFFFFF0F0)
+                : const Color(0xFFF0FFF4),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: changeColor.withOpacity(0.3))
+        ),
+        child: Row(
+          children: [
+            Icon(
+              change > 0 ? Icons.trending_up : Icons.trending_down,
+              color: changeColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+                child: Text(
+                    '$type tüketiminiz bir önceki fatura dönemine göre ${changePercentage.abs().toStringAsFixed(1)}% $changeText. '
+                        '(Bu dönem: ${currentUsage.toStringAsFixed(0)} $unit, Önceki dönem: ${previousUsage.toStringAsFixed(0)} $unit)',
+                    style: TextStyle(color: change > 0 ? const Color(0xFF8B0000) : const Color(0xFF006400))
+                )
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      // Hata durumunda boş widget döndür
+      debugPrint('Consumption insights error: $e');
+      return const SizedBox.shrink();
+    }
+  }
+
+
+  Widget _buildChartCard({
+    required String title,
+    required String period,        // boş ("") geçilebilir
+    required Widget child,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 4))],
-        border: Border.all(color: const Color(0xFFE5E5EA).withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFFE5E5EA).withOpacity(0.5),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
@@ -536,12 +774,31 @@ class _ChartsScreenState extends State<ChartsScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: const Color(0xFFF2F2F7), borderRadius: BorderRadius.circular(20)),
-                  child: Text(period, style: const TextStyle(fontSize: 14, color: Color(0xFF86868B))),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1D1D1F),
+                  ),
                 ),
+                // 👇 YALNIZCA period doluysa göster
+                if (period.trim().isNotEmpty)
+                  Container(
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF2F2F7),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      period,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF86868B),
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 20),
@@ -551,6 +808,7 @@ class _ChartsScreenState extends State<ChartsScreen> {
       ),
     );
   }
+
 
   Widget _buildTab(String title, int index) {
     final isSelected = selectedConsumptionType == index;

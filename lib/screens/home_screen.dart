@@ -180,23 +180,65 @@ class _HomeScreenState extends State<HomeScreen> {
     result.sort((a, b) => a.date.compareTo(b.date));
     return result;
   }
+  Map<String, double> _calculateNiceAxisValues(double maxValue) {
+    // Eğer hiç veri yoksa veya maksimum değer 0 ise, varsayılan bir aralık döndür.
+    if (maxValue <= 0) {
+      return {'maxY': 100.0, 'interval': 25.0};
+    }
+
+    // Ekranda yaklaşık olarak kaç adet çizgi/etiket görmek istediğimizi belirtiyoruz.
+    const int numberOfTicks = 4;
+    final double rawInterval = maxValue / numberOfTicks;
+
+    // Aralığın büyüklüğünü (10'un kuvveti olarak) buluyoruz.
+    final double magnitude = pow(10, (log(rawInterval) / log(10)).floor()).toDouble();
+    final double residual = rawInterval / magnitude;
+
+    // Bu büyüklüğe en uygun "güzel" çarpanı (1, 2, veya 5) seçiyoruz.
+    double niceMultiplier;
+    if (residual > 5) {
+      niceMultiplier = 10;
+    } else if (residual > 2) {
+      niceMultiplier = 5;
+    } else if (residual > 1) {
+      niceMultiplier = 2;
+    } else {
+      niceMultiplier = 1;
+    }
+
+    final double niceInterval = niceMultiplier * magnitude;
+
+    // Yeni "güzel" aralığımıza göre eksenin yeni maksimum değerini hesaplıyoruz.
+    final double niceMaxValue = (maxValue / niceInterval).ceil() * niceInterval;
+
+    return {'maxY': niceMaxValue, 'interval': niceInterval};
+  }
 
   /// YENİ: Ana ekrandaki aylık fatura grafiğini oluşturan metod.
   Widget _buildHomeScreenMonthlyChart(List<ChartDataPoint> data) {
     if (data.length < 2) {
       return _buildChartCard(
-          title: 'Aylık Fatura Tutarı',
-          period: 'Yeterli Veri Yok',
-          child: const SizedBox(height: 200, child: Center(child: Text('Karşılaştırma için en az 2 aylık fatura verisi gerekli.'))));
+        title: 'Aylık Fatura Tutarı',
+        period: 'Yeterli Veri Yok',
+        child: const SizedBox(
+            height: 200,
+            child: Center(child: Text('Karşılaştırma için en az 2 aylık fatura verisi gerekli.'))),
+      );
     }
 
-    final currentAmount = data.last.value;
+    final currentAmount  = data.last.value;
     final previousAmount = data[data.length - 2].value;
-    final change = currentAmount - previousAmount;
+    final change         = currentAmount - previousAmount;
 
-    final minY = (data.map((d) => d.value).reduce(min) * 0.9).floorToDouble();
-    final maxY = (data.map((d) => d.value).reduce(max) * 1.1).ceilToDouble();
-    final interval = ((maxY - minY) / 4).roundToDouble();
+    // ───────────────────────────────────────────────────────────
+    // 1) “Güzel” eksen değerlerini hesapla
+    final double dataMaxY = data.map((d) => d.value).reduce(max);
+    final axis            = _calculateNiceAxisValues(dataMaxY);
+    final double niceMaxY = axis['maxY']!;
+    final double interval = axis['interval']!;
+    // minY’yi 0’a sabitleyelim (negatif fatura olmaz)
+    const double minY = 0;
+    // ───────────────────────────────────────────────────────────
 
     return _buildChartCard(
       title: 'Aylık Fatura Tutarı',
@@ -207,28 +249,61 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 200,
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: interval > 0 ? interval : 100, getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFF2F2F7), strokeWidth: 1, dashArray: [5, 5])),
-                titlesData: FlTitlesData(
+                gridData: FlGridData(
                   show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: interval,
+                  getDrawingHorizontalLine: (value) => const FlLine(
+                    color: Color(0xFFF2F2F7),
+                    strokeWidth: 1,
+                    dashArray: [5, 5],
+                  ),
+                ),
+                titlesData: FlTitlesData(
                   rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles  : const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  // X-ekseni
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 30,
                       interval: 1,
                       getTitlesWidget: (double value, TitleMeta meta) {
-                        if (value.toInt() < data.length) return Padding(padding: const EdgeInsets.only(top: 8.0), child: Text(data[value.toInt()].label, style: const TextStyle(color: Color(0xFF86868B), fontWeight: FontWeight.w500, fontSize: 12)));
-                        return const Text('');
+                        if (value.toInt() < data.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              data[value.toInt()].label,
+                              style: const TextStyle(
+                                color: Color(0xFF86868B),
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
                       },
                     ),
                   ),
+                  // Y-ekseni
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      interval: interval > 0 ? interval : 100,
-                      getTitlesWidget: (double value, TitleMeta meta) => Text('₺${(value / 1000).toStringAsFixed(1)}k', style: const TextStyle(color: Color(0xFF86868B), fontWeight: FontWeight.w500, fontSize: 12)),
-                      reservedSize: 42,
+                      interval: interval,            // ← “güzel” aralık
+                      reservedSize: 48,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        // ₺ ve “k” takısını tam sayı olarak göster
+                        final label = '₺${(value / 1000).round()}k';
+                        return Text(
+                          label,
+                          style: const TextStyle(
+                            color: Color(0xFF86868B),
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -236,32 +311,67 @@ class _HomeScreenState extends State<HomeScreen> {
                 minX: 0,
                 maxX: data.length - 1.toDouble(),
                 minY: minY,
-                maxY: maxY,
+                maxY: niceMaxY,                      // ← “güzel” tepe
                 lineBarsData: [
                   LineChartBarData(
-                    spots: data.asMap().entries.map((entry) => FlSpot(entry.key.toDouble(), entry.value.value)).toList(),
+                    spots: data
+                        .asMap()
+                        .entries
+                        .map((e) => FlSpot(e.key.toDouble(), e.value.value))
+                        .toList(),
                     isCurved: true,
                     gradient: const LinearGradient(colors: [Color(0xFF007AFF), Color(0xFF007AFF)]),
                     barWidth: 3,
                     isStrokeCapRound: true,
-                    dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 6, color: const Color(0xFF007AFF), strokeWidth: 3, strokeColor: Colors.white)),
-                    belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [const Color(0xFF007AFF).withOpacity(0.1), const Color(0xFF007AFF).withOpacity(0.0)], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                        radius: 6,
+                        color: const Color(0xFF007AFF),
+                        strokeWidth: 3,
+                        strokeColor: Colors.white,
+                      ),
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF007AFF).withOpacity(0.10),
+                          const Color(0xFF007AFF).withOpacity(0.00),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          //bu ay geçen ay değişim bilgileri
+          // Değişim bilgileri
           _buildStatsRow([
-            _StatItem(value: NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(currentAmount), label: 'Bu Ay', color: change > 0 ? const Color(0xFFFF3B30) : const Color(0xFF30D158)),
-            _StatItem(value: NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(previousAmount), label: 'Geçen Ay', color: const Color(0xFF86868B)),
-            _StatItem(value: '${change > 0 ? '+' : ''}${NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(change)}', label: 'Değişim', color: change > 0 ? const Color(0xFFFF3B30) : const Color(0xFF30D158)),
+            _StatItem(
+                value: NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0)
+                    .format(currentAmount),
+                label: 'Bu Ay',
+                color: change > 0 ? const Color(0xFFFF3B30) : const Color(0xFF30D158)),
+            _StatItem(
+                value: NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0)
+                    .format(previousAmount),
+                label: 'Geçen Ay',
+                color: const Color(0xFF86868B)),
+            _StatItem(
+                value:
+                '${change > 0 ? '+' : ''}${NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0).format(change)}',
+                label: 'Değişim',
+                color: change > 0 ? const Color(0xFFFF3B30) : const Color(0xFF30D158)),
           ]),
         ],
       ),
     );
   }
+
 
   /// Son okumalar listesindeki her bir öğeyi oluşturan widget.
   Widget _buildReadingListItem(BuildContext context, MeterReading reading) {

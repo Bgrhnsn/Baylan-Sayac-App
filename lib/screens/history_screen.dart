@@ -19,9 +19,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   final TextEditingController _searchController = TextEditingController();
 
-  String _searchQuery = '';
-  String? _selectedUnit;
-  DateTimeRange? _selectedDateRange;
+  String _searchQuery = '';//aranan metiin
+  String? _selectedUnit;//kwh m3 hepsi
+  DateTimeRange? _selectedDateRange;//tarih filtreleme
 
   @override
   void initState() {
