@@ -195,7 +195,7 @@ class ReadingDetailScreen extends StatelessWidget {
                         alignment: Alignment.center,
                         children: [
                           Image.network(
-                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=AIzaSyB-2ZRLI6n1OzbQZ5YhuQzlzbYO2UWU4js', // google cloud api key
+                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=', // google cloud api key
                             height: 150,
                             width: double.infinity,
                             fit: BoxFit.cover,
