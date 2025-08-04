@@ -82,7 +82,7 @@ class ReadingDetailScreen extends StatelessWidget {
     }
   }
 
-  // GÜNCELLEME: Harita uygulamasını doğru URL ile açan metod.
+  // Harita uygulamasını doğru URL ile açan metod.
   Future<void> _openMap(BuildContext context, double lat, double lng) async {
     final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
     if (await canLaunchUrl(uri)) {

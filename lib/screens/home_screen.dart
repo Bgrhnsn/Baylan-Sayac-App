@@ -11,6 +11,7 @@ import 'package:sayacfaturapp/screens/new_reading_screen.dart';
 import 'package:sayacfaturapp/screens/profile_screen.dart';
 import 'package:sayacfaturapp/screens/reading_detail_screen.dart';
 import 'package:sayacfaturapp/theme/custom_components.dart';
+import 'package:sayacfaturapp/screens/chatbot_screen.dart';
 
 // YENİ: ChartsScreen'den gelen veri modeli
 class ChartDataPoint {
@@ -61,19 +62,13 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 4,
         child: const Icon(Icons.chat_bubble_outline_rounded),
         onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('ChatBot'),
-              content: const Text('Bu özellik yakında eklenecektir.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Tamam'),
-                ),
-              ],
-            ),
-          );
+          if (_currentUser != null) {
+            Navigator.of(context).push(
+              // Chatbot'a kullanıcının ID'si gönderiliyor.çünkü verileri kimden çekiceğini bilmeli
+              MaterialPageRoute(builder: (context) => ChatbotScreen(userId: _currentUser!.uid)),
+            );
+          }
+
         },
       ),
       bottomNavigationBar: BottomAppBar(
@@ -125,7 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // YENİ: Eski kart yerine yeni grafik metodu çağrılıyor.
             _buildHomeScreenMonthlyChart(invoiceData),//grafik
             const SizedBox(height: 24),
             Row(
