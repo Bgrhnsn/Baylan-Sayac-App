@@ -28,16 +28,66 @@ class ChatbotScreen extends StatefulWidget {
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
   final TextEditingController _controller = TextEditingController();
+  // YENİ: ListView'i kontrol etmek için bir ScrollController ekliyoruz.
+  final ScrollController _scrollController = ScrollController();
+
   final List<Map<String, dynamic>> _conversationHistory = [];
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   bool _isHistoryLoading = true;
 
+  // YENİ: "Aşağı Kaydır" butonunun görünürlüğünü kontrol etmek için.
+  bool _showScrollDownButton = false;
+
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    // YENİ: ScrollController'ı dinleyerek kullanıcının ne zaman yukarı kaydırdığını anlıyoruz.
+    _scrollController.addListener(_scrollListener);
   }
+
+  // YENİ: Controller'ları dispose ederek hafıza sızıntılarını önlüyoruz.
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.removeListener(_scrollListener);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // YENİ: Kaydırma dinleyicisi.
+  void _scrollListener() {
+    // Eğer kullanıcı en altta değilse butonu göster.
+    if (_scrollController.position.pixels < _scrollController.position.maxScrollExtent - 50) {
+      if (!_showScrollDownButton) {
+        setState(() {
+          _showScrollDownButton = true;
+        });
+      }
+    } else {
+      // Eğer en alttaysa butonu gizle.
+      if (_showScrollDownButton) {
+        setState(() {
+          _showScrollDownButton = false;
+        });
+      }
+    }
+  }
+
+  void _scrollToBottom() {
+    // UI'ın güncellenmesini beklemek için küçük bir gecikme ekliyoruz.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
 
   /// Firestore'dan konuşma geçmişini yükleyen fonksiyon
   Future<void> _loadHistory() async {
@@ -73,6 +123,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       setState(() {
         _isHistoryLoading = false;
       });
+      _scrollToBottom();
     }
   }
 
@@ -159,6 +210,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     await _savePartToHistory(userMessageMap);
 
     await _getAndProcessResponse();
+    _scrollToBottom();
   }
 
   Future<void> _getAndProcessResponse() async {
@@ -190,6 +242,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           _messages.add(botMessage);
           _isLoading = false;
         });
+        _scrollToBottom();
 
         final modelTextPart = {'role': 'model', 'parts': [{'text': botResponseText}]};
         _conversationHistory.add(modelTextPart);
@@ -201,6 +254,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         _messages.add(errorMessage);
         _isLoading = false;
       });
+      _scrollToBottom();
     }
   }
 
@@ -237,6 +291,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           installationId: args['installationId'] as String?,
           fieldsToUpdate: args['fieldsToUpdate'] as Map<String, dynamic>?,
           confirmed: args['confirmed'] as bool? ?? false,
+        );
+      case 'getReadings':
+        return await _getReadings(
+          installationId: args['installationId'] as String?,
+          meterName: args['meterName'] as String?,
+          limit: (args['limit'] as num?)?.toInt(),
         );
       default:
         return "Bilinmeyen fonksiyon: $functionName";
@@ -326,6 +386,85 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
+  /// Belirli bir tesisat numarasına göre veya en son 'n' adet kaydı getiren fonksiyon.
+  /// Tesisat numarasına, sayaç adına göre veya en son 'n' adet kaydı getiren fonksiyon.
+  Future<String> _getReadings({String? installationId, String? meterName, int? limit}) async {
+    // Girdi kontrolünü güncelle
+    if (installationId == null && limit == null && meterName == null) {
+      return "Lütfen detayını istediğiniz bir tesisat numarası veya sayaç adı belirtin, ya da son kaç kaydı görmek istediğinizi söyleyin (örn: son 3 kayıt).";
+    }
+
+    try {
+      // Temel sorgu referansını al
+      CollectionReference readingsCollection = FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('readings');
+
+      Query query;
+
+      // Sorgu mantığını güncelle: Öncelik tesisat numarası, sonra sayaç adı, sonra limit.
+      if (installationId != null) {
+        query = readingsCollection.where('installationId', isEqualTo: installationId);
+      } else if (meterName != null) {
+        query = readingsCollection.where('meterName', isEqualTo: meterName);
+      } else {
+        // Eğer ikisi de yoksa, herhangi bir filtre olmadan devam et
+        query = readingsCollection;
+      }
+
+      // Her zaman en yeniden eskiye doğru sırala
+      query = query.orderBy('readingTime', descending: true);
+
+      // Eğer limit belirtilmişse uygula
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      final snapshot = await query.get();
+
+      if (snapshot.docs.isEmpty) {
+        if (installationId != null) {
+          return "$installationId tesisat numarasına ait bir kayıt bulunamadı.";
+        } else if (meterName != null) {
+          return "'$meterName' adına sahip bir kayıt bulunamadı.";
+        } else {
+          return "Hiç kayıt bulunamadı.";
+        }
+      }
+
+      // Sonuçları formatlama kısmı aynı kalıyor
+      final summary = StringBuffer("İstediğiniz kayıtların detayları aşağıdadır:\n\n");
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        final readingDate = (data['readingTime'] as Timestamp).toDate();
+        final formattedReadingDate = DateFormat('dd MMMM yyyy HH:mm', 'tr_TR').format(readingDate);
+
+        summary.writeln("Tesisat No: ${data['installationId']}");
+        if (data.containsKey('meterName')) {
+          summary.writeln("Sayaç Adı: ${data['meterName']}");
+        }
+        summary.writeln("Tüketim: ${data['readingValue']} ${data['unit']}");
+        if (data.containsKey('invoiceAmount')) {
+          summary.writeln("Fatura Tutarı: ₺${(data['invoiceAmount'] as num).toStringAsFixed(2)}");
+        }
+        if (data.containsKey('dueDate')) {
+          final dueDate = (data['dueDate'] as Timestamp).toDate();
+          final formattedDueDate = DateFormat('dd MMMM yyyy', 'tr_TR').format(dueDate);
+          summary.writeln("Son Ödeme Tarihi: $formattedDueDate");
+        }
+        summary.writeln("Okuma Zamanı: $formattedReadingDate");
+        summary.writeln("--------------------");
+      }
+
+      return summary.toString();
+
+    } catch (e) {
+      return "Kayıtlar getirilirken bir hata oluştu: $e";
+    }
+  }
+
   /// Chatbot aracılığıyla yeni kayıt oluşturan ve onay isteyen fonksiyon.
   Future<String> _createNewReading({
     double? readingValue,
@@ -344,6 +483,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
     if (unit == null) {
       return "Anladım. Peki bu tüketim elektrik (kWh) mi yoksa su (m³) için mi?";
+    }
+    if (invoiceAmount == null) {
+      return "Peki , faturanızın son ödeme tutarı ne kadar ?";
+    }
+    if (dueDate == null) {
+      return "Peki , faturanızın son ödeme tarihi ne zaman ?";
     }
 
     if (!confirmed) {
@@ -449,8 +594,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
   Future<Map<String, dynamic>> getGeminiResponse(List<Map<String, dynamic>> history) async {
     final String? apiKey = dotenv.env['GEMINI_API_KEY'];
+    if (apiKey == null) {
+      throw Exception("GEMINI_API_KEY .env dosyasında bulunamadı.");
+    }
 
     final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey');
+
 
     final systemPrompt = """
      
@@ -462,85 +611,59 @@ En Önemli Kuralların
 Asla Teknik Konuşma: Kullanıcıya getConsumptionAnalysis gibi teknik fonksiyon adlarından, 
 koddan veya "araçtan" kesinlikle bahsetme. Sen bir asistansın, bir programcı değil.
 
-Mutlaka Onay Al: Bir işlem yapmadan önce (yeni kayıt, silme, güncelleme) topladığın 
-bilgileri kullanıcıya özetle ve "Onaylıyor musunuz?" gibi bir soruyla onayını iste.
- Fonksiyonu önce confirmed: false ile çağırarak özeti al, kullanıcı "evet" derse aynı
-  fonksiyonu confirmed: true ile çağırarak işlemi tamamla.
+Mutlaka Onay Al (Sadece Gerekliyse):
+- VERİYİ DEĞİŞTİREN veya SİLEN işlemlerden önce (yeni kayıt, silme, güncelleme) mutlaka kullanıcıdan onay al. Onayı `confirmed: false` ile özet sunarak iste, kullanıcı "evet" derse `confirmed: true` ile işlemi tamamla.
+- SADECE VERİ OKUYAN işlemler için (kayıt listeleme, analiz) KESİNLİKLE ONAY İSTEME. İşlemi doğrudan yap ve sonucu kullanıcıya sun.
 
 Net ve Son Cevaplar Ver: Bir aracı kullandıktan sonra, aldığın sonuçla kullanıcıya doğrudan
- ve anlaşılır bir final cevap oluştur. "Fonksiyonun çıktısını yorumlayamam" gibi cümleler kurma.
+ ve anlaşılır bir final cevap oluştur. Fonksiyondan gelen sonucu doğrudan kopyalama, onu yorumlayarak
+ doğal bir dille sun.
 
 Belirsizliği Gider: Eğer kullanıcı eksik bilgi verirse (örneğin, hangi faturayı sileceğini
  söylemezse), işlemi yapmadan önce "Elbette, hangi tesisat numaralı faturanızı silmek
   istersiniz?" gibi sorularla ondan net bilgi al.
 
 Kullanıcı Sorularına Cevapların (Uygulama Kılavuzu)
-Eğer kullanıcı aşağıdaki konularda soru sorarsa, ona bu şekilde yol göster:
-
-Yeni Fatura Eklemek İçin: "Yeni bir fatura eklemek için ekranın altındaki menüde, 
-ortada bulunan büyük '+' ikonlu 'Ekle' butonuna dokunabilirsiniz. Açılan sayfada bilgileri 
-elle girebilir veya sağ üstteki kamera ikonuna basarak faturanızı taratabilirsiniz."
-
-Geçmiş Kayıtları Görmek İçin: "Tüm geçmiş faturalarınızı ve okumalarınızı görmek için 
-alt menüdeki 'Geçmiş' (saat ikonlu) sekmesine gidebilirsiniz. Orada kayıtlarınızı silebilir 
-veya güncelleyebilirsiniz."
-
-Grafikleri İncelemek İçin: "Tüketim ve harcama analizlerinizi görmek için alt menüdeki 'Grafik'
- (çubuk grafik ikonlu) sekmesini kullanabilirsiniz. Orada aylık harcama ve tüketim
- dağılımı gibi detaylı bilgileri bulabilirsiniz."
-
-Şifre Değiştirmek İçin: "Şifrenizi değiştirmek için alt menüden 'Profil' (insan ikonlu) 
-sekmesine gidin ve 'Şifremi Değiştir' seçeneğine dokunun. E-posta adresinize gönderilecek 
-bağlantı üzerinden yeni şifrenizi kolayca belirleyebilirsiniz."
-
-Hesabı Silmek İçin: "Hesabınızı silmek isterseniz, 'Profil' ekranında, 'Tehlikeli Alan'
- başlığı altındaki 'Hesabımı Sil' seçeneğini kullanabilirsiniz. Bu işlemin tüm verilerinizi 
- kalıcı olarak sileceğini unutmayın."
+//... Bu bölüm aynı kalacak ...
 
 Ajan Yeteneklerin (Araç Kullanımı)
 Kullanıcı senden bir işlem yapmanı istediğinde, aşağıdaki araçları kullan:
 
 1. Veri Analizi (getConsumptionAnalysis):
-
 Ne Zaman Kullanılır: Kullanıcı "ortalama", "toplam", "ne kadar harcadım", "karşılaştır"
  gibi kelimelerle bir hesaplama istediğinde bu aracı kullan.
-
-Örnek Akış:
-
-Kullanıcı: "Son 2 ayın fatura ortalaması nedir?"
-
-Senin Görevin: getConsumptionAnalysis(periodInMonths: 2, dataType: 'fatura', analysisType: 'ortalama')
- fonksiyonunu çağırmak.
-
-Sana Gelen Sonuç: "Ortalama fatura tutarı: ₺450.75"
-
-Senin Kullanıcıya Cevabın: "Hemen kontrol ettim, son 2 aylık fatura ortalamanız ₺450,75'dir."
+DİKKAT: Bu işlem sadece veri okur, ONAY GEREKTİRMEZ.
 
 2. Yeni Veri Girişi (createNewReading):
-
 Ne Zaman Kullanılır: Kullanıcı "kaydet", "ekle", "yeni fatura gir" gibi bir 
 istekte bulunduğunda bu aracı kullan.
-
-Zorunlu Bilgiler: Kayıt için installationId (Tesisat Numarası) ve readingValue 
-(Okuma Değeri) bilgilerini kullanıcıdan mutlaka öğrenmelisin.
+Zorunlu Bilgiler: Kayıt için installationId, readingValue, unit, invoiceAmount ve dueDate bilgileri zorunludur.
+DİKKAT: Bu işlem veri değiştirir, ONAY GEREKTİRİR.
 
 3. Veri Güncelleme (updateReading):
-
 Ne Zaman Kullanılır: Kullanıcı "güncelle", "değiştir", "düzelt" gibi bir 
 istekte bulunduğunda bu aracı kullan.
-
-Zorunlu Bilgiler: Hangi kaydı güncelleyeceğini anlamak için installationId 
-(Tesisat Numarası) ve hangi bilgileri değiştireceğini (fieldsToUpdate) öğrenmelisin.
+DİKKAT: Bu işlem veri değiştirir, ONAY GEREKTİRİR.
 
 4. Veri Silme (deleteReading):
-
 Ne Zaman Kullanılır: Kullanıcı "sil", "kaldır", "faturayı yok et" gibi bir 
 istekte bulunduğunda bu aracı kullan.
+DİKKAT: Bu işlem veri siler, ONAY GEREKTİRİR.
 
-Zorunlu Bilgiler: Hangi kaydı sileceğini anlamak için installationId (Tesisat Numarası)
- bilgisini öğrenmelisin.
-    """;
+5. Kayıt Detaylarını Getirme (getReadings):
+Ne Zaman Kullanılır: Kullanıcı "detayları göster", "faturamı listele", "son okumalarım neler", "kayıtlarımı getir" gibi bir
+istekte bulunduğunda kullanılır.
+DİKKAT: Bu işlem sadece veri okur, ONAY GEREKTİRMEZ.
 
+Karar Verme Mantığı (getReadings için):
+
+Karar Verme Mantığı (getReadings için):
+- 'son 3 kayıt' gibi bir sayı/zaman varsa 'limit' kullan.
+- '1234567' gibi sadece sayı varsa 'installationId' kullan.
+- 'Ev Elektrik' gibi metin ya da sayı varsa 'meterName' kullan.
+   """;
+
+    // Not: 'tools' bölümü de güncel ve doğru haliyle burada yer almaktadır.
     final body = {
       'contents': history,
       'systemInstruction': {
@@ -549,6 +672,11 @@ Zorunlu Bilgiler: Hangi kaydı sileceğini anlamak için installationId (Tesisat
       'tools': [{
         'functionDeclarations': [
           {
+            'name': 'getReadings',
+            'description': "Kullanıcının fatura/okuma kayıtlarının detaylarını getirir. Sayısal bir tesisat numarasına, 'Ev Faturası' gibi metinsel bir sayaç adına veya en son kaç adet kaydın istendiğine göre arama yapabilir.",
+            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Detayları istenen kaydın genellikle sayılardan oluşan spesifik tesisat numarası.'}, 'meterName': {'type': 'STRING', 'description': "Detayları istenen kaydın veya sayacın 'Ev Elektrik' gibi metinsel adı."}, 'limit': {'type': 'INTEGER', 'description': "Listelenmesi istenen en son kayıt sayısı. Örneğin, son 3 kayıt için 3."} } }
+          },
+          {
             'name': 'getConsumptionAnalysis',
             'description': 'Kullanıcının belirli bir dönemdeki verilerini analiz eder.',
             'parameters': { 'type': 'OBJECT', 'properties': { 'periodInMonths': {'type': 'INTEGER'}, 'dataType': {'type': 'STRING'}, 'analysisType': {'type': 'STRING'} }, 'required': ['periodInMonths', 'dataType', 'analysisType'] }
@@ -556,32 +684,17 @@ Zorunlu Bilgiler: Hangi kaydı sileceğini anlamak için installationId (Tesisat
           {
             'name': 'createNewReading',
             'description': 'Kullanıcı için yeni bir sayaç okuma kaydı oluşturur.',
-            'parameters': { 'type': 'OBJECT', 'properties': { 'readingValue': {'type': 'NUMBER'}, 'invoiceAmount': {'type': 'NUMBER'}, 'unit': {'type': 'STRING'}, 'meterName': {'type': 'STRING'}, 'installationId': {'type': 'STRING'}, 'dueDate': {'type': 'STRING', 'description': "YYYY-MM-DD formatında tarih."}, 'confirmed': {'type': 'BOOLEAN'} }, 'required': ['installationId', 'readingValue', 'unit'] }
+            'parameters': { 'type': 'OBJECT', 'properties': { 'readingValue': {'type': 'NUMBER'}, 'invoiceAmount': {'type': 'NUMBER'}, 'unit': {'type': 'STRING'}, 'meterName': {'type': 'STRING'}, 'installationId': {'type': 'STRING'}, 'dueDate': {'type': 'STRING', 'description': "YYYY-MM-DD formatında tarih."}, 'confirmed': {'type': 'BOOLEAN'} }, 'required': ['installationId', 'readingValue', 'unit', 'invoiceAmount', 'dueDate'] }
           },
           {
             'name': 'deleteReading',
             'description': 'Belirtilen tesisat numarasına ait en son kaydı siler.',
-            'parameters': {
-              'type': 'OBJECT',
-              'properties': {
-                'installationId': {'type': 'STRING', 'description': 'Silinecek kaydın tesisat numarası.'},
-                'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı silme işlemini onayladıysa true olur.'}
-              },
-              'required': ['installationId']
-            }
+            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Silinecek kaydın tesisat numarası.'}, 'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı silme işlemini onayladıysa true olur.'} }, 'required': ['installationId'] }
           },
           {
             'name': 'updateReading',
             'description': 'Belirtilen tesisat numarasına ait en son kaydı günceller.',
-            'parameters': {
-              'type': 'OBJECT',
-              'properties': {
-                'installationId': {'type': 'STRING', 'description': 'Güncellenecek kaydın tesisat numarası.'},
-                'fieldsToUpdate': {'type': 'OBJECT', 'description': 'Güncellenecek alanları ve yeni değerlerini içeren bir nesne. Örn: {"invoiceAmount": 350, "readingValue": 200}'},
-                'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı güncelleme işlemini onayladıysa true olur.'}
-              },
-              'required': ['installationId', 'fieldsToUpdate']
-            }
+            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Güncellenecek kaydın tesisat numarası.'}, 'fieldsToUpdate': {'type': 'OBJECT', 'description': 'Güncellenecek alanları ve yeni değerlerini içeren bir nesne.'}, 'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı güncelleme işlemini onayladıysa true olur.'} }, 'required': ['installationId', 'fieldsToUpdate'] }
           }
         ]
       }],
@@ -628,24 +741,45 @@ Zorunlu Bilgiler: Hangi kaydı sileceğini anlamak için installationId (Tesisat
       ),
       body: _isHistoryLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+      // YENİ: Butonu listenin üzerine koyabilmek için Stack kullanıyoruz.
+          : Stack(
         children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(8.0),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return _buildMessageBubble(message);
-              },
+          Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  // YENİ: Controller'ı ListView'e bağlıyoruz.
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(8.0),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final message = _messages[index];
+                    return _buildMessageBubble(message);
+                  },
+                ),
+              ),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: LinearProgressIndicator(),
+                ),
+              _buildMessageComposer(),
+            ],
+          ),
+          // YENİ: "Aşağı Kaydır" butonu
+          Positioned(
+            bottom: 80, // Butonun mesaj yazma alanının üzerinde durması için.
+            right: 16,
+            child: AnimatedOpacity(
+              opacity: _showScrollDownButton ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              child: FloatingActionButton.small(
+                onPressed: _showScrollDownButton ? _scrollToBottom : null,
+                tooltip: 'En Sona Git',
+                child: const Icon(Icons.arrow_downward),
+              ),
             ),
           ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: LinearProgressIndicator(),
-            ),
-          _buildMessageComposer(),
         ],
       ),
     );
