@@ -80,13 +80,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
+      final email=_emailController.text.trim();
+      final password = _passwordController.text.trim();
       // 1. Kullanıcıyı Firebase Auth ile oluştur.
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),//metni alır boşlukları temizler
-        password: _passwordController.text.trim(),
+        email:email,
+        password: password,
       );
       // 2. Kullanıcının adını güncelle.
       await credential.user!.updateDisplayName(_nameController.text.trim());
+
 
       // Kullanıcıyı hemen çıkış yaptırarak Auth sarmalayıcısının
       // ana ekrana yönlendirmesini engelle ve manuel giriş yapmasını sağla.
@@ -100,8 +103,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Kayıt ekranını kapatarak bir önceki ekrana (Giriş) dön.
-        Navigator.of(context).pop();
+        // Kayıt ekranını kapatarak giriş ekranına dön mail ve şifreyi yolla logine
+        Navigator.of(context).pop({
+          'email': email,
+          'password': password,
+        });
       }
 
     } on FirebaseAuthException catch (e) {

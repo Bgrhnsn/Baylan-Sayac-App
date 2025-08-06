@@ -11,8 +11,11 @@ import 'package:sayacfaturapp/screens/login_screen.dart';
 // Proje importları
 import 'firebase_options.dart';
 import 'package:sayacfaturapp/screens/auth_wrapper.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() async {
+
+
+Future<void> main() async {
   // Flutter binding'lerinin uygulama çalışmadan önce hazır olduğundan emin oluyoruz.
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -31,6 +34,8 @@ void main() async {
 
   // Türkçe tarih formatlamasını başlatıyoruz.
   await initializeDateFormatting('tr_TR', null);
+  //apikey saklama
+  await dotenv.load(fileName: ".env");
 
   runApp(const MyApp());
 }

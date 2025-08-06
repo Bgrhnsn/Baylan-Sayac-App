@@ -1,9 +1,4 @@
 // lib/new_reading_screen.dart
-// ===========================================================
-// yeni fatura ekleme alanı google ml kit bağlandı
-// ml kit ile algılanan metin regex kurallarından geçerek istediğimiz verileri almaya çalışır
-// GÜNCELLEME: Fatura görseli Firebase Storage'a kaydediliyor ve önizlemesi gösteriliyor.
-// ===========================================================
 
 import 'dart:io';//dosya işlemleri
 import 'package:path_provider/path_provider.dart';

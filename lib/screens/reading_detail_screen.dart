@@ -8,6 +8,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import 'package:sayacfaturapp/screens/photo_viewer_screen.dart'; //
 import 'package:flutter/gestures.dart'; //
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 
 // Düzenleme ekranını import ediyoruz.
@@ -15,6 +16,9 @@ import 'package:sayacfaturapp/screens/new_reading_screen.dart';
 
 /// Bir sayaç okumasının tüm detaylarını gösteren, düzenleme ve silme
 /// işlemlerine olanak tanıyan ekran.
+///
+
+
 class ReadingDetailScreen extends StatelessWidget {
   const ReadingDetailScreen({super.key, required this.reading});
 
@@ -98,6 +102,7 @@ class ReadingDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String? googleMapsApiKey = dotenv.env['MAPS_API_KEY'];
     return Scaffold(
       appBar: AppBar(
         title: Text(reading.meterName ?? reading.installationId),
@@ -184,9 +189,7 @@ class ReadingDetailScreen extends StatelessWidget {
                   ),
                 if (reading.gpsLat != null && reading.gpsLng != null) ...[
                   const SizedBox(height: 8),
-                  // GÜNCELLEME: Harita görüntüsü için not eklendi.
-                  // Static Map'in çalışması için Google Cloud'dan "Maps Static API"
-                  // anahtarı alıp 'YOUR_API_KEY' kısmına yapıştırmalısınız.
+
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: GestureDetector(
@@ -195,7 +198,7 @@ class ReadingDetailScreen extends StatelessWidget {
                         alignment: Alignment.center,
                         children: [
                           Image.network(
-                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=', // google cloud api key
+                            'https://maps.googleapis.com/maps/api/staticmap?center=${reading.gpsLat},${reading.gpsLng}&zoom=15&size=600x300&markers=color:blue%7C${reading.gpsLat},${reading.gpsLng}&key=$googleMapsApiKey', // google cloud api key
                             height: 150,
                             width: double.infinity,
                             fit: BoxFit.cover,

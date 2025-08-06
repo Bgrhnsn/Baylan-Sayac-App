@@ -10,25 +10,25 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Firebase'deki anlık kimlik doğrulama durumunu dinle
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Bağlantı bekleniyorsa yükleniyor ekranı göster
+        // Bağlantı bekleniyorsa
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // Eğer kullanıcı verisi varsa (giriş yapmışsa), ana ekranı göster
+        // Hata durumu
+        if (snapshot.hasError) {
+          return Scaffold(body: Center(child: Text('Bir hata oluştu: ${snapshot.error}')));
+        }
+
+        // Kullanıcı giriş yapmışsa
         if (snapshot.hasData) {
           return const HomeScreen();
         }
 
-        // Eğer kullanıcı verisi yoksa (giriş yapmamışsa), giriş ekranını göster
+        // Giriş yapılmamışsa
         return const LoginScreen();
       },
     );

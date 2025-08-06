@@ -83,6 +83,20 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _navigateToRegisterScreen()async{
+    final result = await Navigator.push<Map<String, String>?>(
+      context,
+      MaterialPageRoute(builder: (context) => const RegisterScreen()),
+    );
+
+    if(result!=null){
+      setState(() {
+        _emailController.text=result['email'] ?? '';
+        _passwordController.text=result['password'] ?? '';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Temadan renkleri ve stilleri alıyoruz.
@@ -185,23 +199,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       icon: Image.asset('assets/google_logo.png', width: 20, height: 20),
                       label: const Text('Google ile Giriş Yap'),
                       onPressed: _isLoading ? null : _signInWithGoogle,
-                      // GÜNCELLEME: Stil, merkezi temadan (OutlinedButtonTheme) geldiği için kaldırıldı.
+
                     ),
 
                     const SizedBox(height: 24),
                     Center(
                       child: TextButton(
-                    onPressed: _isLoading
-                    ? null
-        : () {
-    Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const RegisterScreen()),
-    );
-    },
-    child: const Text('Hesabın yok mu? Kayıt Ol'),
-    ),
-                        // GÜNCELLEME: Stil, merkezi temadan (TextButtonTheme) geldiği için kaldırıldı.
+                    onPressed: _isLoading ? null : _navigateToRegisterScreen,
+                    child:const Text("Hesabın yok mu kayıt ol"),
+                        ),
                       ),
                   ],
                 ),
