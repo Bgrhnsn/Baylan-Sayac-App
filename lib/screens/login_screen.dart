@@ -4,8 +4,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:sayacfaturapp/screens/register_screen.dart';
 
-// GÜNCELLEME: home_screen.dart import'u artık gerekli değil.
-// import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _firebaseErrorToTR(String code) {
     switch (code) {
-    // GÜVENLİK GÜNCELLEMESİ: Tüm hatalı giriş denemeleri tek bir mesajda birleştirildi.
+    //e posta ya da şifre yanlışsa aynı hatayı yolla
       case 'user-not-found':
       case 'wrong-password':
       case 'invalid-credential':
@@ -51,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      // Manuel yönlendirme kaldırıldı. AuthWrapper bunu otomatik yapacak.
+
     } on FirebaseAuthException catch (e) {
       print('YAKALANAN FIREBASE HATA KODU: ${e.code}');
       setState(() => _errorMessage = _firebaseErrorToTR(e.code));
@@ -133,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _emailController,
                       decoration: const InputDecoration(
-                        labelText: 'E-posta', // HintText yerine LabelText daha şık durur
+                        labelText: 'E-posta',
                         prefixIcon: Icon(Icons.email_outlined),
                       ),
                       keyboardType: TextInputType.emailAddress,

@@ -28,7 +28,7 @@ class ChatbotScreen extends StatefulWidget {
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
   final TextEditingController _controller = TextEditingController();
-  // YENİ: ListView'i kontrol etmek için bir ScrollController ekliyoruz.
+  //ListView'i kontrol etmek için
   final ScrollController _scrollController = ScrollController();
 
   final List<Map<String, dynamic>> _conversationHistory = [];
@@ -43,11 +43,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   void initState() {
     super.initState();
     _loadHistory();
-    // YENİ: ScrollController'ı dinleyerek kullanıcının ne zaman yukarı kaydırdığını anlıyoruz.
+    // ScrollController'ı dinleyerek kullanıcının ne zaman yukarı kaydırdığını anlıyoruz.
     _scrollController.addListener(_scrollListener);
   }
 
-  // YENİ: Controller'ları dispose ederek hafıza sızıntılarını önlüyoruz.
+  // hafıza sızıntılarını
   @override
   void dispose() {
     _controller.dispose();
@@ -56,7 +56,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     super.dispose();
   }
 
-  // YENİ: Kaydırma dinleyicisi.
+  // Kaydırma dinleyicisi.
   void _scrollListener() {
     // Eğer kullanıcı en altta değilse butonu göster.
     if (_scrollController.position.pixels < _scrollController.position.maxScrollExtent - 50) {
@@ -76,7 +76,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   }
 
   void _scrollToBottom() {
-    // UI'ın güncellenmesini beklemek için küçük bir gecikme ekliyoruz.
+    // UI'ın güncellenmesini beklemek için küçük bir gecikme
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -89,7 +89,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   }
 
 
-  /// Firestore'dan konuşma geçmişini yükleyen fonksiyon
+  /// Firestore'dan konuşma geçmişi
   Future<void> _loadHistory() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -127,7 +127,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  /// Konuşmanın bir parçasını Firestore'a kaydeden fonksiyon
+  /// Konuşmanın Firestore'a kaydedet
   Future<void> _savePartToHistory(Map<String, dynamic> part) async {
     final Map<String, dynamic> partToSave = Map.from(part);
     partToSave['timestamp'] = FieldValue.serverTimestamp();
@@ -139,7 +139,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         .add(partToSave);
   }
 
-  /// Hem lokal hem de Firestore'daki geçmişi temizleyen fonksiyon
+  /// Hem lokal hem de Firestore'daki geçmişi temizle
   Future<void> _clearHistory() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -183,7 +183,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  /// Karşılama mesajını eklemek için yardımcı fonksiyon
+  /// Karşılama mesajı
   void _addWelcomeMessage() {
     _messages.add(ChatMessage(
       text: "Merhaba! Ben Asistan. Fatura kaydı oluşturabilir, silebilir, güncelleyebilir veya faturalar için analiz yapmamı isteyebilirsiniz.",
@@ -337,7 +337,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  /// GÜNCELLEME: Bir kaydı güncelleyen fonksiyon, artık tarih formatını düzeltiyor.
+  ///  kaydı güncelleyen fonksiyon, tarih formatını düzeltiyor.
   Future<String> _updateReading({String? installationId, Map<String, dynamic>? fieldsToUpdate, bool confirmed = false}) async {
     if (installationId == null) {
       return "Hangi kaydı güncellemek istediğinizi belirtmek için lütfen tesisat numarasını veya sayaç adını söyleyin.";
@@ -368,7 +368,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
 
     try {
-      // HATA ÇÖZÜMÜ: Firestore'a yazmadan önce tarih formatını dönüştür.
+      // Firestore'a yazmadan önce tarih formatını dönüştür.
       final Map<String, dynamic> processedFields = Map.from(fieldsToUpdate);
       if (processedFields.containsKey('dueDate') && processedFields['dueDate'] is String) {
         try {
@@ -386,7 +386,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  /// Belirli bir tesisat numarasına göre veya en son 'n' adet kaydı getiren fonksiyon.
+
   /// Tesisat numarasına, sayaç adına göre veya en son 'n' adet kaydı getiren fonksiyon.
   Future<String> _getReadings({String? installationId, String? meterName, int? limit}) async {
     // Girdi kontrolünü güncelle
@@ -403,7 +403,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
       Query query;
 
-      // Sorgu mantığını güncelle: Öncelik tesisat numarası, sonra sayaç adı, sonra limit.
+      // Sorgu mantığını güncelle: Öncelik tesisat numarası, sonra sayaç adı
       if (installationId != null) {
         query = readingsCollection.where('installationId', isEqualTo: installationId);
       } else if (meterName != null) {
@@ -413,7 +413,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         query = readingsCollection;
       }
 
-      // Her zaman en yeniden eskiye doğru sırala
+      // yeniden eskiye descending
       query = query.orderBy('readingTime', descending: true);
 
       // Eğer limit belirtilmişse uygula
@@ -465,7 +465,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  /// Chatbot aracılığıyla yeni kayıt oluşturan ve onay isteyen fonksiyon.
+  /// Chatbot aracılığıyla yeni kayıt oluşturma
   Future<String> _createNewReading({
     double? readingValue,
     double? invoiceAmount,
@@ -592,140 +592,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
   }
 
-  Future<Map<String, dynamic>> getGeminiResponse(List<Map<String, dynamic>> history) async {
-    final String? apiKey = dotenv.env['GEMINI_API_KEY'];
-    if (apiKey == null) {
-      throw Exception("GEMINI_API_KEY .env dosyasında bulunamadı.");
-    }
-
-    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey');
-
-
-    final systemPrompt = """
-     
-Sen, AkışMetre adlı bir mobil uygulama için uzman ve arkadaş canlısı bir destek asistanısın. 
-Adın Asistan. Görevin, kullanıcılara son derece nazik bir dille yardımcı olmak, sorularını yanıtlamak
- ve onlar adına işlemler yapmaktır.
-
-En Önemli Kuralların
-Asla Teknik Konuşma: Kullanıcıya getConsumptionAnalysis gibi teknik fonksiyon adlarından, 
-koddan veya "araçtan" kesinlikle bahsetme. Sen bir asistansın, bir programcı değil.
-
-Mutlaka Onay Al (Sadece Gerekliyse):
-- VERİYİ DEĞİŞTİREN veya SİLEN işlemlerden önce (yeni kayıt, silme, güncelleme) mutlaka kullanıcıdan onay al. Onayı `confirmed: false` ile özet sunarak iste, kullanıcı "evet" derse `confirmed: true` ile işlemi tamamla.
-- SADECE VERİ OKUYAN işlemler için (kayıt listeleme, analiz) KESİNLİKLE ONAY İSTEME. İşlemi doğrudan yap ve sonucu kullanıcıya sun.
-
-Net ve Son Cevaplar Ver: Bir aracı kullandıktan sonra, aldığın sonuçla kullanıcıya doğrudan
- ve anlaşılır bir final cevap oluştur. Fonksiyondan gelen sonucu doğrudan kopyalama, onu yorumlayarak
- doğal bir dille sun.
-
-Belirsizliği Gider: Eğer kullanıcı eksik bilgi verirse (örneğin, hangi faturayı sileceğini
- söylemezse), işlemi yapmadan önce "Elbette, hangi tesisat numaralı faturanızı silmek
-  istersiniz?" gibi sorularla ondan net bilgi al.
-
-Kullanıcı Sorularına Cevapların (Uygulama Kılavuzu)
-//... Bu bölüm aynı kalacak ...
-
-Ajan Yeteneklerin (Araç Kullanımı)
-Kullanıcı senden bir işlem yapmanı istediğinde, aşağıdaki araçları kullan:
-
-1. Veri Analizi (getConsumptionAnalysis):
-Ne Zaman Kullanılır: Kullanıcı "ortalama", "toplam", "ne kadar harcadım", "karşılaştır"
- gibi kelimelerle bir hesaplama istediğinde bu aracı kullan.
-DİKKAT: Bu işlem sadece veri okur, ONAY GEREKTİRMEZ.
-
-2. Yeni Veri Girişi (createNewReading):
-Ne Zaman Kullanılır: Kullanıcı "kaydet", "ekle", "yeni fatura gir" gibi bir 
-istekte bulunduğunda bu aracı kullan.
-Zorunlu Bilgiler: Kayıt için installationId, readingValue, unit, invoiceAmount ve dueDate bilgileri zorunludur.
-DİKKAT: Bu işlem veri değiştirir, ONAY GEREKTİRİR.
-
-3. Veri Güncelleme (updateReading):
-Ne Zaman Kullanılır: Kullanıcı "güncelle", "değiştir", "düzelt" gibi bir 
-istekte bulunduğunda bu aracı kullan.
-DİKKAT: Bu işlem veri değiştirir, ONAY GEREKTİRİR.
-
-4. Veri Silme (deleteReading):
-Ne Zaman Kullanılır: Kullanıcı "sil", "kaldır", "faturayı yok et" gibi bir 
-istekte bulunduğunda bu aracı kullan.
-DİKKAT: Bu işlem veri siler, ONAY GEREKTİRİR.
-
-5. Kayıt Detaylarını Getirme (getReadings):
-Ne Zaman Kullanılır: Kullanıcı "detayları göster", "faturamı listele", "son okumalarım neler", "kayıtlarımı getir" gibi bir
-istekte bulunduğunda kullanılır.
-DİKKAT: Bu işlem sadece veri okur, ONAY GEREKTİRMEZ.
-
-Karar Verme Mantığı (getReadings için):
-
-Karar Verme Mantığı (getReadings için):
-- 'son 3 kayıt' gibi bir sayı/zaman varsa 'limit' kullan.
-- '1234567' gibi sadece sayı varsa 'installationId' kullan.
-- 'Ev Elektrik' gibi metin ya da sayı varsa 'meterName' kullan.
-   """;
-
-    // Not: 'tools' bölümü de güncel ve doğru haliyle burada yer almaktadır.
-    final body = {
-      'contents': history,
-      'systemInstruction': {
-        'parts': [{'text': systemPrompt}]
-      },
-      'tools': [{
-        'functionDeclarations': [
-          {
-            'name': 'getReadings',
-            'description': "Kullanıcının fatura/okuma kayıtlarının detaylarını getirir. Sayısal bir tesisat numarasına, 'Ev Faturası' gibi metinsel bir sayaç adına veya en son kaç adet kaydın istendiğine göre arama yapabilir.",
-            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Detayları istenen kaydın genellikle sayılardan oluşan spesifik tesisat numarası.'}, 'meterName': {'type': 'STRING', 'description': "Detayları istenen kaydın veya sayacın 'Ev Elektrik' gibi metinsel adı."}, 'limit': {'type': 'INTEGER', 'description': "Listelenmesi istenen en son kayıt sayısı. Örneğin, son 3 kayıt için 3."} } }
-          },
-          {
-            'name': 'getConsumptionAnalysis',
-            'description': 'Kullanıcının belirli bir dönemdeki verilerini analiz eder.',
-            'parameters': { 'type': 'OBJECT', 'properties': { 'periodInMonths': {'type': 'INTEGER'}, 'dataType': {'type': 'STRING'}, 'analysisType': {'type': 'STRING'} }, 'required': ['periodInMonths', 'dataType', 'analysisType'] }
-          },
-          {
-            'name': 'createNewReading',
-            'description': 'Kullanıcı için yeni bir sayaç okuma kaydı oluşturur.',
-            'parameters': { 'type': 'OBJECT', 'properties': { 'readingValue': {'type': 'NUMBER'}, 'invoiceAmount': {'type': 'NUMBER'}, 'unit': {'type': 'STRING'}, 'meterName': {'type': 'STRING'}, 'installationId': {'type': 'STRING'}, 'dueDate': {'type': 'STRING', 'description': "YYYY-MM-DD formatında tarih."}, 'confirmed': {'type': 'BOOLEAN'} }, 'required': ['installationId', 'readingValue', 'unit', 'invoiceAmount', 'dueDate'] }
-          },
-          {
-            'name': 'deleteReading',
-            'description': 'Belirtilen tesisat numarasına ait en son kaydı siler.',
-            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Silinecek kaydın tesisat numarası.'}, 'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı silme işlemini onayladıysa true olur.'} }, 'required': ['installationId'] }
-          },
-          {
-            'name': 'updateReading',
-            'description': 'Belirtilen tesisat numarasına ait en son kaydı günceller.',
-            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Güncellenecek kaydın tesisat numarası.'}, 'fieldsToUpdate': {'type': 'OBJECT', 'description': 'Güncellenecek alanları ve yeni değerlerini içeren bir nesne.'}, 'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı güncelleme işlemini onayladıysa true olur.'} }, 'required': ['installationId', 'fieldsToUpdate'] }
-          }
-        ]
-      }],
-      'generationConfig': { 'temperature': 0.2, 'topP': 0.8, 'topK': 40, 'maxOutputTokens': 2048 }
-    };
-
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      if (data['candidates'] != null && data['candidates'].isNotEmpty) {
-        final candidate = data['candidates'][0];
-        if (candidate['content'] != null && candidate['content']['parts'] != null) {
-          final parts = candidate['content']['parts'];
-          if (parts.isNotEmpty) {
-            return parts[0] as Map<String, dynamic>;
-          }
-        }
-      }
-      throw Exception("API yanıtı beklenen formatta değil: ${jsonEncode(data)}");
-    } else {
-      print('Hata kodu: ${response.statusCode}');
-      print('Hata mesajı: ${response.body}');
-      throw Exception("API ile iletişim kurarken bir sorun oluştu. (Hata Kodu: ${response.statusCode})");
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -783,6 +649,196 @@ Karar Verme Mantığı (getReadings için):
         ],
       ),
     );
+  }
+
+  Future<Map<String, dynamic>> getGeminiResponse(List<Map<String, dynamic>> history) async {
+    final String? apiKey = dotenv.env['GEMINI_API_KEY'];
+    if (apiKey == null) {
+      throw Exception("GEMINI_API_KEY .env dosyasında bulunamadı.");
+    }
+
+    final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey');
+
+
+    final systemPrompt = """
+     
+Sen, AkışMetre adlı bir mobil uygulama için uzman ve arkadaş canlısı bir destek asistanısın. 
+Adın Asistan. Görevin, kullanıcılara son derece nazik bir dille yardımcı olmak, sorularını yanıtlamak
+ ve onlar adına işlemler yapmaktır.
+ 
+En Önemli Kuralların
+Önce Araçları Kullan: Kullanıcının isteği, sahip olduğun 'Ajan Yeteneklerinden' biriyle eşleşiyorsa, metin olarak cevap vermek yerine HER ZAMAN DOĞRUDAN o aracı çağır. 'Şimdi faturayı bulacağım' gibi ara cümleler kurma, direkt fonksiyonu çağırarak eyleme geç.
+Asla Teknik Konuşma: Teknik fonksiyon adlarından veya 'araçtan' bahsetme.
+Mutlaka Onay Al (Sadece Gerekliyse):
+- VERİYİ DEĞİŞTİREN veya SİLEN işlemlerden önce (yeni kayıt, silme, güncelleme) mutlaka kullanıcıdan onay al.
+- SADECE VERİ OKUYAN işlemler için (kayıt listeleme, analiz) KESİNLİKLE ONAY İSTEME.
+Net ve Son Cevaplar Ver: Bir aracı kullandıktan sonra, aldığın sonuçla kullanıcıya doğrudan ve anlaşılır bir final cevap oluştur. 
+Belirsizliği Gider: Eğer kullanıcı eksik bilgi verirse, işlemi yapmadan önce netleştirici sorular sor.
+
+Net ve Son Cevaplar Ver: Bir aracı kullandıktan sonra, aldığın sonuçla kullanıcıya doğrudan
+ ve anlaşılır bir final cevap oluştur. Fonksiyondan gelen sonucu doğrudan kopyalama, onu yorumlayarak
+ doğal bir dille sun.
+
+Belirsizliği Gider: Eğer kullanıcı eksik bilgi verirse (örneğin, hangi faturayı sileceğini
+ söylemezse), işlemi yapmadan önce "Elbette, hangi tesisat numaralı faturanızı silmek
+  istersiniz?" gibi sorularla ondan net bilgi al. 
+
+
+UYGULAMA BİLGİ BANKASI 
+Bu bölüm, AkışMetre uygulamasının özelliklerini ve yapısını tanımlar. Kullanıcı sorularını yanıtlarken bu bilgileri kaynak olarak kullan.
+
+1.  **Uygulamanın Adı ve Amacı:**
+    * Ad: AkışMetre
+    * Amaç: Kullanıcıların elektrik ve su gibi faturalarını kolayca kaydetmelerini, geçmiş tüketimlerini takip etmelerini ve analizlerle harcamalarını anlamalarını sağlamak.
+
+2.  **Ana Ekranlar ve İşlevleri:**
+    * **'Ekle' Ekranı (+ Butonu):** Kullanıcıların fatura bilgilerini manuel olarak girdiği veya faturayı taratarak otomatik bilgi aldığı yerdir.Fatura barkodu değil faturanın kendisini okutmak lazım
+    * **'Geçmiş' Ekranı (Saat ikonu):** Tüm eski fatura ve okuma kayıtlarının listelendiği, güncellenebildiği ve silinebildiği ekrandır.
+    * **'Grafik' Ekranı (Grafik ikonu):** Tüketim ve fatura tutarlarının aylık ve yıllık olarak grafiklerle analiz edildiği yerdir.
+    * **'Profil' Ekranı (İnsan ikonu):** Kullanıcının şifre değiştirme, e-posta güncelleme ve hesabını kalıcı olarak silme gibi işlemleri yaptığı yerdir.
+    * **'Asistan' Ekranı (Bu sohbet ekranı):** Kullanıcıların doğrudan komut vererek fatura ekleme, silme, listeleme ve analiz gibi işlemleri yapabildiği akıllı yardım ekranıdır.
+
+
+UYGULAMA REHBERLİĞİ VE SENARYOLAR
+Kullanıcı uygulama hakkında genel bir soru sorduğunda, yukarıdaki BİLGİ BANKASI'nı kullanarak ona rehberlik et.
+
+Rehberlik Kuralları:
+-   **Doğal Ol:** Bilgiyi doğrudan kopyalama, kendi cümlelerinle, sohbet havasında anlat.
+-   **Bilgiyi Eyleme Bağla:** Bu en önemli kuraldır. Eğer kullanıcının sorduğu özellik, senin de bir 'Ajan Yeteneği' ile yapabildiğin bir işlemse, ona HEM uygulamanın ilgili ekranını anlat HEM DE "İsterseniz bu işlemi şimdi sizin için buradan yapabilirim" diyerek yardım teklif et.
+
+Örnek Senaryolar:
+
+**Senaryo 1: Genel Soru**
+-   Kullanıcı: "Bu uygulama ne işe yarıyor?" veya "Neler yapabilirim?"
+-   İdeal Cevabın: "Ben AkışMetre'nin asistanıyım! Bu uygulama, elektrik ve su gibi faturalarınızı kolayca takip etmeniz, geçmiş tüketimlerinizi görmeniz ve analizlerle tasarruf etmeniz için tasarlandı. Alt menüdeki butonları kullanarak kayıt ekleyebilir, geçmişi görebilir ve grafiklerinizi inceleyebilirsiniz. Ayrıca, birçok işlemi doğrudan benden de isteyebilirsiniz."
+
+**Senaryo 2: Eyleme Dönüştürülebilir Soru**
+-   Kullanıcı: "Eski faturalarımı nerede görebilirim?"
+-   İdeal Cevabın: "Tüm geçmiş faturalarınızı alt menüdeki 'Geçmiş' (saat ikonlu) sekmesinde görebilir, orada kayıtlarınızı silebilir veya güncelleyebilirsiniz. Dilerseniz, görmek istediğiniz kayıtları şimdi sizin için buradan listeleyebilirim. Son kaç faturanızı görmek istersiniz?" (Bu cevapla hem rehberlik ettin hem de `getReadings` aracını kullanmayı teklif ettin.)
+
+**Senaryo 3: Eyleme Dönüştürülemez Soru**
+-   Kullanıcı: "Şifremi nasıl değiştiririm?"
+-   İdeal Cevabın: "Şifrenizi değiştirmek için alt menüden 'Profil' (insan ikonlu) sekmesine gitmeniz ve oradaki 'Şifremi Değiştir' seçeneğini kullanmanız gerekiyor. E-posta adresinize bir sıfırlama bağlantısı gönderilecektir." (Bu işlem için bir aracın olmadığı için sadece yol gösterdin.)
+
+Ajan Yeteneklerin (Araç Kullanımı)
+Kullanıcı senden bir işlem yapmanı istediğinde, aşağıdaki araçları kullan:
+
+1. Veri Analizi (getConsumptionAnalysis):
+Ne Zaman Kullanılır: Kullanıcı "ortalama", "toplam", "ne kadar harcadım", "karşılaştır"
+ gibi kelimelerle bir hesaplama istediğinde bu aracı kullan.
+DİKKAT: Bu işlem sadece veri okur, ONAY GEREKTİRMEZ.
+
+2. Yeni Veri Girişi (createNewReading):
+Ne Zaman Kullanılır: Kullanıcı "kaydet", "ekle", "yeni fatura gir" gibi bir istekte bulunduğunda bu aracı kullan.
+Zorunlu Bilgiler: Kayıt için installationId, readingValue, invoiceAmount ve dueDate bilgileri zorunludur. 'unit' (birim) bilgisini ise aşağıdaki Çıkarım Yapma Mantığı'nı kullanarak kendin belirlemeye çalış.
+DİKKAT: Bu işlem veri değiştirir, ONAY GEREKTİRİR.
+
+Çıkarım Yapma Mantığı (createNewReading için):
+- Eğer kullanıcı 'su faturası', 'su aboneliği' veya 'su' kelimesini içeren bir ifade kullanırsa, 'unit' parametresini sormadan otomatik olarak 'm³' olarak ayarla.
+- Eğer kullanıcı 'elektrik faturası' veya 'elektrik' kelimesini içeren bir ifade kullanırsa, 'unit' parametresini sormadan otomatik olarak 'kWh' olarak ayarla.
+- Eğer kullanıcı bu anahtar kelimeleri kullanmazsa ve birim belirsizse, kullanıcıya sorarak netleştir. Örnek Soru: "Elbette, bu bir su (m³) faturası mı yoksa elektrik (kWh) faturası mı?"
+
+Örnek Akışlar (createNewReading için):
+- Kullanıcı: "Yeni bir su faturası eklemek istiyorum. Tüketim 43, tutar 210 TL."
+- Senin Anlaman Gereken: Kullanıcı "su faturası" dediği için birim 'm³' olmalı.
+- Senin Sorman Gereken Soru (Eksik Bilgi Varsa): "Anladım. Faturanın tesisat numarasını ve son ödeme tarihini de alabilir miyim?"
+- Nihai Fonksiyon Çağrısı: createNewReading(readingValue: 43, invoiceAmount: 210, unit: 'm³', ...)
+
+- Kullanıcı: "Elektrik faturamı kaydet. Tüketim 250, fatura 600 lira."
+- Senin Anlaman Gereken: Kullanıcı "Elektrik" dediği için birim 'kWh' olmalı.
+- Nihai Fonksiyon Çağrısı: createNewReading(readingValue: 250, invoiceAmount: 600, unit: 'kWh', ...)
+
+3. Veri Güncelleme (updateReading):
+Ne Zaman Kullanılır: Kullanıcı "güncelle", "değiştir", "düzelt" gibi bir 
+istekte bulunduğunda bu aracı kullan.
+DİKKAT: Bu işlem veri değiştirir, ONAY GEREKTİRİR.
+
+4. Veri Silme (deleteReading):
+Ne Zaman Kullanılır: Kullanıcı "sil", "kaldır", "faturayı yok et" gibi bir 
+istekte bulunduğunda bu aracı kullan.
+DİKKAT: Bu işlem veri siler, ONAY GEREKTİRİR.
+
+5. Kayıt Detaylarını Getirme (getReadings):
+Ne Zaman Kullanılır: Kullanıcı "detayları göster", "faturamı listele", "son okumalarım neler", "kayıtlarımı getir" gibi bir
+istekte bulunduğunda kullanılır.
+DİKKAT: Bu işlem sadece veri okur, ONAY GEREKTİRMEZ.
+
+6. Aylık Özet Oluşturma (Meta-Yetenek):
+Ne Zaman Kullanılır: Kullanıcı "aylık özet", "geçen ay ne oldu", "bana rapor ver" gibi genel bir raporlama istediğinde kullanılır.
+Görevin: Kullanıcının isteğine göre, hem 'fatura' hem de 'tuketim' için `getConsumptionAnalysis` aracını ayrı ayrı çağır. Elde ettiğin iki sonucu birleştirerek kullanıcıya tek bir anlamlı özet paragrafı sun.
+
+Karar Verme Mantığı (getReadings için):
+
+Karar Verme Mantığı (getReadings için):
+- 'son 3 kayıt' gibi bir sayı/zaman varsa 'limit' kullan.
+- '1234567' gibi sadece sayı varsa 'installationId' kullan.
+- 'Ev Elektrik' gibi metin ya da sayı varsa 'meterName' kullan.
+   """;
+
+
+    final body = {
+      'contents': history,//sohbeti unutmaması için
+      'systemInstruction': {
+        'parts': [{'text': systemPrompt}]
+      },
+      'tools': [{
+        'functionDeclarations': [
+          {
+            'name': 'getReadings',
+            'description': "Kullanıcının fatura/okuma kayıtlarının detaylarını getirir. Sayısal bir tesisat numarasına, 'Ev Faturası' gibi metinsel bir sayaç adına veya en son kaç adet kaydın istendiğine göre arama yapabilir.",
+            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Detayları istenen kaydın genellikle sayılardan oluşan spesifik tesisat numarası.'}, 'meterName': {'type': 'STRING', 'description': "Detayları istenen kaydın veya sayacın 'Ev Elektrik' gibi metinsel adı."}, 'limit': {'type': 'INTEGER', 'description': "Listelenmesi istenen en son kayıt sayısı. Örneğin, son 3 kayıt için 3."} } }
+          },
+          {
+            'name': 'getConsumptionAnalysis',
+            'description': 'Kullanıcının belirli bir dönemdeki verilerini analiz eder.',
+            'parameters': { 'type': 'OBJECT', 'properties': { 'periodInMonths': {'type': 'INTEGER'}, 'dataType': {'type': 'STRING'}, 'analysisType': {'type': 'STRING'} }, 'required': ['periodInMonths', 'dataType', 'analysisType'] }
+          },
+          {
+            'name': 'createNewReading',
+            'description': 'Kullanıcı için yeni bir sayaç okuma kaydı oluşturur.',
+            'parameters': { 'type': 'OBJECT', 'properties': { 'readingValue': {'type': 'NUMBER'}, 'invoiceAmount': {'type': 'NUMBER'}, 'unit': {'type': 'STRING'}, 'meterName': {'type': 'STRING'}, 'installationId': {'type': 'STRING'}, 'dueDate': {'type': 'STRING', 'description': "YYYY-MM-DD formatında tarih."}, 'confirmed': {'type': 'BOOLEAN'} }, 'required': ['installationId', 'readingValue', 'unit', 'invoiceAmount', 'dueDate'] }
+          },
+          {
+            'name': 'deleteReading',
+            'description': 'Belirtilen tesisat numarasına ait en son kaydı siler.',
+            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Silinecek kaydın tesisat numarası.'}, 'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı silme işlemini onayladıysa true olur.'} }, 'required': ['installationId'] }
+          },
+          {
+            'name': 'updateReading',
+            'description': 'Belirtilen tesisat numarasına ait en son kaydı günceller.',
+            'parameters': { 'type': 'OBJECT', 'properties': { 'installationId': {'type': 'STRING', 'description': 'Güncellenecek kaydın tesisat numarası.'}, 'fieldsToUpdate': {'type': 'OBJECT', 'description': 'Güncellenecek alanları ve yeni değerlerini içeren bir nesne.'}, 'confirmed': {'type': 'BOOLEAN', 'description': 'Kullanıcı güncelleme işlemini onayladıysa true olur.'} }, 'required': ['installationId', 'fieldsToUpdate'] }
+          }
+        ]
+      }],
+      'generationConfig': { 'temperature': 0.2, 'topP': 0.8, 'topK': 40, 'maxOutputTokens': 2048 }
+    };
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      //candidates adında lise var mı
+      if (data['candidates'] != null && data['candidates'].isNotEmpty) {
+        //listenin ilk elemanını al (en iyi adau)
+        final candidate = data['candidates'][0];
+        //content ve parts kontrolü
+        if (candidate['content'] != null && candidate['content']['parts'] != null) {
+          final parts = candidate['content']['parts'];
+          if (parts.isNotEmpty) {
+            //en iyi adayın içindeki asıl cevap al ve geri döndür
+            return parts[0] as Map<String, dynamic>;
+          }
+        }
+      }
+      throw Exception("API yanıtı beklenen formatta değil: ${jsonEncode(data)}");
+    } else {
+      print('Hata kodu: ${response.statusCode}');
+      print('Hata mesajı: ${response.body}');
+      throw Exception("API ile iletişim kurarken bir sorun oluştu. (Hata Kodu: ${response.statusCode})");
+    }
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
